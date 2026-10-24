@@ -1,4 +1,5 @@
 from flask import Flask
+from flask_cors import CORS
 
 from app.database import get_connection
 from app.routes.vehiculo_routes import vehiculo_bp
@@ -7,10 +8,12 @@ from app.routes.entrada_routes import entrada_bp
 from app.routes.salida_routes import salida_bp
 from app.routes.consulta_routes import consulta_bp
 from app.routes.reasignacion_routes import reasignacion_bp
+from app.routes.operador_routes import operador_bp
 
 
 def create_app():
     app = Flask(__name__)
+    CORS(app)
 
     app.register_blueprint(vehiculo_bp)
     app.register_blueprint(celda_bp)
@@ -18,6 +21,7 @@ def create_app():
     app.register_blueprint(salida_bp)
     app.register_blueprint(consulta_bp)
     app.register_blueprint(reasignacion_bp)
+    app.register_blueprint(operador_bp)
 
     @app.route("/")
     def inicio():
