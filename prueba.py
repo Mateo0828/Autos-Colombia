@@ -1,1 +1,0 @@
-print("Python configurado correctamente para Autos Colombia")
