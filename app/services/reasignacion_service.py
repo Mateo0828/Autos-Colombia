@@ -1,15 +1,13 @@
 from app.repositories.estancia_repository import reasignar_celda
+from app.services.validacion_service import (
+    validar_codigo_celda,
+    validar_placa
+)
 
 
 def cambiar_celda(placa, nueva_celda):
-    placa = str(placa).strip()
-    nueva_celda = str(nueva_celda).strip()
-
-    if not placa:
-        raise ValueError("La placa es obligatoria.")
-
-    if not nueva_celda:
-        raise ValueError("La nueva celda es obligatoria.")
+    placa = validar_placa(placa)
+    nueva_celda = validar_codigo_celda(nueva_celda)
 
     resultado = reasignar_celda(
         placa=placa,

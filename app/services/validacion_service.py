@@ -1,5 +1,6 @@
 from app.repositories.estancia_repository import existe_estancia_activa
 from app.repositories.vehiculo_repository import buscar_por_placa
+import re
 
 
 def validar_ingreso(placa):
@@ -54,3 +55,59 @@ def validar_ingreso(placa):
             "sin_estancia_activa": sin_estancia_activa
         }
     }
+
+def validar_id_operador(id_operador):
+    if id_operador is None:
+        raise ValueError("El operador es obligatorio.")
+
+    if isinstance(id_operador, bool):
+        raise ValueError("El identificador del operador no es válido.")
+
+    try:
+        id_operador = int(id_operador)
+    except (TypeError, ValueError):
+        raise ValueError(
+            "El identificador del operador debe ser un número entero."
+        )
+
+    if id_operador <= 0:
+        raise ValueError(
+            "El identificador del operador debe ser mayor que cero."
+        )
+
+    return id_operador
+
+def validar_placa(placa):
+    placa = str(placa).strip().upper()
+
+    if not placa:
+        raise ValueError("La placa es obligatoria.")
+
+    if len(placa) > 10:
+        raise ValueError("La placa no puede superar los 10 caracteres.")
+
+    if not re.fullmatch(r"[A-Z0-9]+", placa):
+        raise ValueError(
+            "La placa solo puede contener letras y números."
+        )
+
+    return placa
+
+
+def validar_codigo_celda(codigo_celda):
+    codigo_celda = str(codigo_celda).strip().upper()
+
+    if not codigo_celda:
+        raise ValueError("La celda es obligatoria.")
+
+    if len(codigo_celda) > 10:
+        raise ValueError(
+            "El código de la celda no puede superar los 10 caracteres."
+        )
+
+    if not re.fullmatch(r"[A-Z0-9]+", codigo_celda):
+        raise ValueError(
+            "El código de la celda solo puede contener letras y números."
+        )
+
+    return codigo_celda

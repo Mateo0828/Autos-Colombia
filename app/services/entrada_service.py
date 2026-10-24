@@ -1,19 +1,15 @@
 from app.repositories.estancia_repository import registrar_entrada
-from app.services.validacion_service import validar_ingreso
-
+from app.services.validacion_service import (
+    validar_codigo_celda,
+    validar_id_operador,
+    validar_ingreso,
+    validar_placa
+)
 
 def crear_entrada(placa, codigo_celda, id_operador):
-    placa = str(placa).strip()
-    codigo_celda = str(codigo_celda).strip()
-
-    if not placa:
-        raise ValueError("La placa es obligatoria.")
-
-    if not codigo_celda:
-        raise ValueError("La celda es obligatoria.")
-
-    if id_operador is None:
-        raise ValueError("El operador es obligatorio.")
+    placa = validar_placa(placa)
+    codigo_celda = validar_codigo_celda(codigo_celda)
+    id_operador = validar_id_operador(id_operador)
 
     validacion = validar_ingreso(placa)
 

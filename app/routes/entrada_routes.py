@@ -1,4 +1,5 @@
 from flask import Blueprint, request
+from psycopg.errors import UniqueViolation
 
 from app.services.entrada_service import crear_entrada
 
@@ -33,8 +34,17 @@ def registrar_entrada():
             "estado": "error",
             "mensaje": str(error)
         }, 400
-
-    except Exception as error:
+    
+    except UniqueViolation:
+        return {
+            "estado": "error",
+            "mensaje": (
+                "No fue posible registrar la entrada porque "
+                "el vehículo o la celda ya se encuentran en uso."
+            )
+        }, 409   
+    
+    except Exception:
         return {
             "estado": "error",
             "mensaje": "No fue posible registrar la entrada."
