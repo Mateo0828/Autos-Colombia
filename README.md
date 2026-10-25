@@ -68,7 +68,12 @@ Esta iteración **no incluye**:
 
 ### Frontend
 
-- Next.js (App Router), TypeScript y Tailwind CSS, en la carpeta `frontend/` (rama `feature/frontend` hasta que se fusione).
+- Next.js 15 (App Router; `next` 15.5.28), React 19.1.0
+- TypeScript 5
+- Tailwind CSS 4
+- lucide-react (íconos)
+
+El código está en la carpeta `frontend/`. Las versiones salen de `frontend/package.json`.
 
 ### Control de versiones
 
@@ -109,6 +114,12 @@ Realizan las consultas y operaciones sobre PostgreSQL.
 
 Administra la conexión del backend con la base de datos.
 
+## Arquitectura del frontend
+
+El frontend (`frontend/`) es una aplicación Next.js con cuatro pantallas: **Entrada** (`/entrada`, pantalla inicial; `/` redirige aquí), **Salida** (`/salida`), **Vehículos dentro** (`/vehiculos-dentro`) y **Estado del parqueadero** (`/estado`), más un panel fijo «Resumen del parqueadero».
+
+Todas las llamadas al backend pasan por el cliente tipado `frontend/src/lib/api.ts`, que usa la variable `NEXT_PUBLIC_API_URL` (por defecto `http://127.0.0.1:5000`). La placa se valida en el cliente antes de consultar a la API (solo letras y números, de 1 a 10 caracteres, convertida a mayúsculas).
+
 ## Estructura del proyecto
 
 ```text
@@ -142,6 +153,31 @@ Autos Colombia/
 │   │
 │   ├── __init__.py
 │   └── database.py
+│
+├── frontend/
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── entrada/
+│   │   │   ├── salida/
+│   │   │   ├── vehiculos-dentro/
+│   │   │   ├── estado/
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx
+│   │   │   └── globals.css
+│   │   ├── components/
+│   │   ├── lib/
+│   │   │   ├── api.ts
+│   │   │   ├── format.ts
+│   │   │   └── useOperators.ts
+│   │   └── types/
+│   │       └── api.ts
+│   ├── package.json
+│   ├── next.config.ts
+│   ├── tsconfig.json
+│   ├── postcss.config.mjs
+│   ├── eslint.config.mjs
+│   ├── README.md
+│   └── .env.local          (no versionado; se crea localmente)
 │
 ├── sql/
 │   └── autos_colombia.sql
@@ -251,7 +287,7 @@ python run.py
 
 Queda en `http://127.0.0.1:5000`.
 
-**(b) Frontend, en Windows** (carpeta `frontend/`, rama `feature/frontend`):
+**(b) Frontend, en Windows** (carpeta `frontend/`, ya fusionada en `main`):
 
 ```powershell
 cd frontend
@@ -272,9 +308,12 @@ npm run dev
 
 Abrir `http://localhost:3000`.
 
-**(c) Nota:** WSL2 reenvía `localhost` hacia Windows, por lo que el frontend en Windows alcanza el backend en `http://127.0.0.1:5000` [real para el backend: `http://127.0.0.1:5000/api/db/test` respondió 200 desde PowerShell]. El frontend aún no se ha probado de punta a punta contra este backend [no probado].
+**(c) Notas:**
 
-La carpeta `frontend/` está en la rama `feature/frontend` hasta que se fusione con `main`.
+- WSL2 reenvía `localhost` hacia Windows, por lo que el frontend en Windows alcanza el backend en `http://127.0.0.1:5000` [real: `http://127.0.0.1:5000/api/db/test` respondió 200 desde PowerShell].
+- El agente de frontend probó el sistema completo [real]: backend real en `127.0.0.1:5000` con PostgreSQL y frontend en Windows, con Chrome automatizado, **28 pruebas, 28 correctas, 0 fallidas** (informe `2026-10-25_frontend_ajuste_d13.md`). Esa prueba se hizo con el frontend en `http://localhost:3001`, porque el puerto 3000 estaba ocupado.
+- Si el puerto 3000 está ocupado, Next.js usa el siguiente libre (3001). Como el CORS del backend es abierto, funciona igual en cualquiera de los dos.
+- Tras probar, deje la base limpia volviendo a cargar `sql/autos_colombia.sql` (ver «Cargar el script SQL»).
 
 ## Verificación de conexión con PostgreSQL
 
@@ -491,9 +530,9 @@ FINALIZADA
 
 ## Integración con frontend
 
-El frontend está hecho con **Next.js** y se ejecuta en desarrollo en `http://localhost:3000`. Consume el backend en `http://127.0.0.1:5000` (variable `NEXT_PUBLIC_API_URL`).
+El frontend está hecho con **Next.js** y se ejecuta en desarrollo en `http://localhost:3000` (o 3001 si el 3000 está ocupado). Consume el backend en `http://127.0.0.1:5000` (variable `NEXT_PUBLIC_API_URL`).
 
-El backend utiliza Flask-CORS con CORS abierto en desarrollo [real: responde `Access-Control-Allow-Origin` para el origen `http://localhost:3000`].
+El backend utiliza Flask-CORS con CORS abierto en desarrollo [real: responde `Access-Control-Allow-Origin` para el origen `http://localhost:3000`; con el frontend en `localhost:3001` las 28 pruebas pasaron].
 
 Los endpoints intercambian información mediante JSON.
 
@@ -512,5 +551,5 @@ Nunca deben almacenarse contraseñas reales dentro del código fuente ni dentro 
 ## Estado del proyecto
 
 - **Backend:** implementa la gestión de entrada y salida de vehículos de la Iteración 1. Se verificó con curl contra PostgreSQL con los datos semilla: los endpoints usados por el frontend y las 13 pruebas de aceptación (P-01 a P-13) a nivel de API funcionan [real]. Una desviación conocida: `GET /api/vehiculos/{placa}/validar-ingreso` no devuelve 400 con placas de formato inválido (devuelve 200 «no registrado»); la validación de formato está en `/api/entradas` y `/api/salidas`.
-- **Frontend:** en desarrollo en la rama `feature/frontend`; aún no está fusionado con `main`.
+- **Frontend:** fusionado en `main` (carpeta `frontend/`). Probado contra el backend real con 28 pruebas correctas y 0 fallidas [real]; la prueba de «sin conexión con el servidor» solo se hizo con simulación [mock].
 - **Fuera de alcance de esta iteración:** gestión completa de clientes, usuarios, celdas y mensualidades, pagos y facturación y reasignación de celdas.
