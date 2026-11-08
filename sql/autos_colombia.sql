@@ -106,12 +106,26 @@ CREATE TABLE estancia (
         CHECK (estado IN ('ACTIVA', 'FINALIZADA')),
 
     CONSTRAINT chk_fecha_salida
-        CHECK (
-            fecha_hora_salida IS NULL
-            OR fecha_hora_salida >= fecha_hora_entrada
-        )
-);
+    CHECK (
+        fecha_hora_salida IS NULL
+        OR fecha_hora_salida >= fecha_hora_entrada
+    ),
 
+    CONSTRAINT chk_cierre_estancia
+        CHECK (
+            (
+                estado = 'ACTIVA'
+                AND fecha_hora_salida IS NULL
+                AND id_operador_salida IS NULL
+            )
+            OR
+            (
+                estado = 'FINALIZADA'
+                AND fecha_hora_salida IS NOT NULL
+                AND id_operador_salida IS NOT NULL
+            )
+        )
+    );
 
 -- =========================================================
 -- REGLAS PARA ESTANCIAS ACTIVAS
