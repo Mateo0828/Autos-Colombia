@@ -5,6 +5,7 @@
 -- =========================================================
 
 -- Permite volver a ejecutar el script desde cero.
+DROP TABLE IF EXISTS sesion CASCADE;
 DROP TABLE IF EXISTS estancia CASCADE;
 DROP TABLE IF EXISTS vehiculo CASCADE;
 DROP TABLE IF EXISTS celda CASCADE;
@@ -24,12 +25,43 @@ CREATE TABLE cliente (
 
 -- =========================================================
 -- TABLA OPERADOR
+-- Usuarios del sistema: ADMINISTRADOR u OPERADOR.
+-- Se conserva esta tabla para mantener las relaciones
+-- históricas de entrada y salida de las estancias.
 -- =========================================================
 CREATE TABLE operador (
     id_operador INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL
+    nombre VARCHAR(100) NOT NULL,
+    usuario VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NULL,
+    rol VARCHAR(20) NOT NULL,
+    estado VARCHAR(10) NOT NULL DEFAULT 'ACTIVO',
+    fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_rol_operador
+        CHECK (rol IN ('ADMINISTRADOR', 'OPERADOR')),
+
+    CONSTRAINT chk_estado_operador
+        CHECK (estado IN ('ACTIVO', 'INACTIVO'))
 );
 
+-- =========================================================
+-- TABLA SESION
+-- Almacena las sesiones autenticadas de los usuarios.
+-- El token original nunca se guarda; solo su hash.
+-- =========================================================
+CREATE TABLE sesion (
+    id_sesion INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    token_hash VARCHAR(64) UNIQUE NOT NULL,
+    id_operador INTEGER NOT NULL,
+    creada TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expira TIMESTAMP NOT NULL,
+    revocada BOOLEAN NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT fk_sesion_operador
+        FOREIGN KEY (id_operador)
+        REFERENCES operador(id_operador)
+);
 
 -- =========================================================
 -- TABLA VEHICULO
@@ -62,13 +94,19 @@ CREATE TABLE celda (
     id_celda INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     codigo VARCHAR(10) UNIQUE NOT NULL,
     tipo_celda VARCHAR(10) NOT NULL,
-    estado VARCHAR(12) NOT NULL DEFAULT 'DISPONIBLE',
+    estado VARCHAR(20) NOT NULL DEFAULT 'DISPONIBLE',
 
     CONSTRAINT chk_tipo_celda
         CHECK (tipo_celda IN ('MOTO', 'CARRO')),
 
     CONSTRAINT chk_estado_celda
-        CHECK (estado IN ('DISPONIBLE', 'OCUPADA'))
+    CHECK (
+        estado IN (
+            'DISPONIBLE',
+            'OCUPADA',
+            'FUERA_DE_SERVICIO'
+        )
+    )
 );
 
 
@@ -155,11 +193,17 @@ VALUES
 ('1045678901', 'Diana Lopez');
 
 
-INSERT INTO operador (nombre)
+INSERT INTO operador (
+    nombre,
+    usuario,
+    rol,
+    estado
+)
 VALUES
-('Operador Mañana'),
-('Operador Tarde'),
-('Operador Noche');
+('Operador Mañana', 'operador1', 'OPERADOR', 'ACTIVO'),
+('Operador Tarde', 'operador2', 'OPERADOR', 'ACTIVO'),
+('Operador Noche', 'operador3', 'OPERADOR', 'ACTIVO'),
+('Administrador Autos Colombia', 'admin', 'ADMINISTRADOR', 'ACTIVO');
 
 
 INSERT INTO vehiculo
