@@ -10,6 +10,8 @@ from app.routes.consulta_routes import consulta_bp
 from app.routes.reasignacion_routes import reasignacion_bp
 from app.routes.operador_routes import operador_bp
 from app.routes.usuario_routes import usuario_bp
+from app.routes.registro_routes import registro_bp
+from app.routes.cliente_routes import cliente_bp
 
 from app.routes.auth_routes import auth_bp
 
@@ -26,6 +28,8 @@ def create_app():
     app.register_blueprint(operador_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(usuario_bp)
+    app.register_blueprint(registro_bp)
+    app.register_blueprint(cliente_bp)
 
     @app.route("/")
     def inicio():
