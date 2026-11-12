@@ -13,6 +13,7 @@ vehiculo_bp = Blueprint("vehiculo", __name__)
 
 
 @vehiculo_bp.route("/api/vehiculos/<placa>", methods=["GET"])
+@requerir_roles("ADMINISTRADOR", "OPERADOR")
 def obtener_vehiculo(placa):
     try:
         vehiculo = consultar_vehiculo(placa)
@@ -38,6 +39,7 @@ def obtener_vehiculo(placa):
     "/api/vehiculos/<placa>/validar-ingreso",
     methods=["GET"]
 )
+@requerir_roles("ADMINISTRADOR", "OPERADOR")
 def validar_ingreso_vehiculo(placa):
     try:
         resultado = validar_ingreso(placa)

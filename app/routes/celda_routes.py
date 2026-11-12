@@ -15,6 +15,7 @@ celda_bp = Blueprint("celda", __name__)
 
 
 @celda_bp.route("/api/celdas/disponibles", methods=["GET"])
+@requerir_roles("ADMINISTRADOR", "OPERADOR")
 def consultar_celdas_disponibles():
     try:
         tipo_vehiculo = request.args.get("tipo_vehiculo", "")
