@@ -1,8 +1,8 @@
 from flask import Blueprint, request
 
 from app.services.celda_service import (
+    CeldaEstadoConflictoError,
     CeldaNoEncontradaError,
-    CeldaOcupadaError,
     listar_celdas,
     obtener_celdas_disponibles,
     poner_celda_disponible,
@@ -86,7 +86,7 @@ def deshabilitar_celda(codigo):
             "mensaje": str(error)
         }, 404
 
-    except CeldaOcupadaError as error:
+    except CeldaEstadoConflictoError as error:
         return {
             "estado": "error",
             "mensaje": str(error)
@@ -125,7 +125,7 @@ def habilitar_celda(codigo):
             "mensaje": str(error)
         }, 404
 
-    except CeldaOcupadaError as error:
+    except CeldaEstadoConflictoError as error:
         return {
             "estado": "error",
             "mensaje": str(error)

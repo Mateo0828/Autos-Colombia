@@ -68,8 +68,20 @@ def registrar_entrada(
             tipo_celda = celda[2]
             estado_celda = celda[3]
 
+            if estado_celda == "OCUPADA":
+                raise ValueError(
+                    "La celda seleccionada se encuentra ocupada."
+                )
+
+            if estado_celda == "FUERA_DE_SERVICIO":
+                raise ValueError(
+                    "La celda seleccionada se encuentra fuera de servicio."
+                )
+
             if estado_celda != "DISPONIBLE":
-                raise ValueError("La celda seleccionada se encuentra ocupada.")
+                raise ValueError(
+                    "La celda seleccionada no se encuentra disponible."
+                )
 
             tipo_requerido = (
                 "MOTO"

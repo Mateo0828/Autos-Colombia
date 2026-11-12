@@ -190,6 +190,10 @@ def deshabilitar_celda(codigo):
                 raise ValueError(
                     "No es posible deshabilitar una celda ocupada."
                 )
+            if celda[3] == "FUERA_DE_SERVICIO":
+                raise ValueError(
+                    "La celda ya se encuentra fuera de servicio."
+                )
 
             cursor.execute(
                 """
@@ -245,9 +249,9 @@ def habilitar_celda(codigo):
             # 3. NUEVA VALIDACIÓN:
             # Una celda ocupada nunca puede convertirse manualmente
             # en DISPONIBLE.
-            if celda[3] == "OCUPADA":
+            if celda[3] != "FUERA_DE_SERVICIO":
                 raise ValueError(
-                    "No es posible habilitar una celda ocupada."
+                    "Solo se puede habilitar una celda que se encuentre fuera de servicio."
                 )
 
             # 4. Si está FUERA_DE_SERVICIO (o ya DISPONIBLE),

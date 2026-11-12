@@ -11,7 +11,8 @@ from app.services.validacion_service import validar_codigo_celda
 class CeldaNoEncontradaError(Exception):
     pass
 
-class CeldaOcupadaError(Exception):
+
+class CeldaEstadoConflictoError(Exception):
     pass
 
 
@@ -80,7 +81,7 @@ def poner_celda_fuera_de_servicio(codigo):
         celda = deshabilitar_celda(codigo)
 
     except ValueError as error:
-        raise CeldaOcupadaError(str(error))
+        raise CeldaEstadoConflictoError(str(error))
 
     if celda is None:
         raise CeldaNoEncontradaError(
@@ -96,7 +97,7 @@ def poner_celda_disponible(codigo):
     try:
         celda = habilitar_celda(codigo)
     except ValueError as error:
-        raise CeldaOcupadaError(str(error))
+        raise CeldaEstadoConflictoError(str(error))
 
     if celda is None:
         raise CeldaNoEncontradaError(
