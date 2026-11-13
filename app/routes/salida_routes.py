@@ -1,12 +1,13 @@
-from flask import Blueprint, request
-
+from flask import Blueprint, g, request
 from app.services.salida_service import crear_salida
 
+from app.auth_middleware import requerir_roles
 
 salida_bp = Blueprint("salida", __name__)
 
 
 @salida_bp.route("/api/salidas", methods=["POST"])
+@requerir_roles("ADMINISTRADOR", "OPERADOR")
 def registrar_salida():
     try:
         datos = request.get_json(silent=True)
@@ -19,7 +20,7 @@ def registrar_salida():
 
         resultado = crear_salida(
             placa=datos.get("placa", ""),
-            id_operador=datos.get("id_operador")
+            id_operador=g.usuario_actual["id_operador"]
         )
 
         return {

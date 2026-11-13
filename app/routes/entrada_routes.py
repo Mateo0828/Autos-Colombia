@@ -1,13 +1,14 @@
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 from psycopg.errors import UniqueViolation
 
 from app.services.entrada_service import crear_entrada
-
+from app.auth_middleware import requerir_roles
 
 entrada_bp = Blueprint("entrada", __name__)
 
 
 @entrada_bp.route("/api/entradas", methods=["POST"])
+@requerir_roles("ADMINISTRADOR", "OPERADOR")
 def registrar_entrada():
     try:
         datos = request.get_json(silent=True)
@@ -21,7 +22,7 @@ def registrar_entrada():
         resultado = crear_entrada(
             placa=datos.get("placa", ""),
             codigo_celda=datos.get("codigo_celda", ""),
-            id_operador=datos.get("id_operador")
+            id_operador=g.usuario_actual["id_operador"]
         )
 
         return {
