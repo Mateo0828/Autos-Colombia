@@ -416,13 +416,14 @@ pero **no forma parte del alcance de EA2 ni debe integrarse al frontend**.
 - PostgreSQL 14 o superior.
 - pgAdmin 4 opcional.
 
-## Frontend existente de EA1
+## Frontend
 
-- Next.js.
-- React.
+- Node.js 18.18 o superior (probado con 20.14).
+- Next.js 15.5 (App Router), React 19.
 - TypeScript.
-- Tailwind CSS.
+- Tailwind CSS 4.
 - lucide-react.
+- Playwright (pruebas de navegador, opcional).
 
 ## Control de versiones
 
@@ -435,11 +436,7 @@ Repositorio:
 https://github.com/Mateo0828/Autos-Colombia
 ```
 
-Backend EA2 desarrollado en:
-
-```text
-feature/i2-backend
-```
+El backend y el frontend de EA2 ya están fusionados en la rama `main`. Para ejecutar el sistema solo se necesita `main`.
 
 ---
 
@@ -476,8 +473,14 @@ Autos Colombia/
 │   ├── database.py
 │   └── __init__.py
 │
-├── frontend/
-│   └── frontend actualmente basado en la Iteración 1
+├── frontend/                  (Next.js: pantallas de EA1 y EA2)
+│   ├── src/app/               (rutas: login, entrada, salida, vehiculos-dentro,
+│   │                           estado, usuarios, registro, clientes, celdas)
+│   ├── src/components/
+│   ├── src/lib/api.ts         (cliente de la API)
+│   ├── src/types/
+│   ├── e2e/                   (pruebas Playwright)
+│   └── package.json
 │
 ├── informes/
 │   ├── 2026-11-11_backend_B08.md
@@ -510,29 +513,33 @@ git clone https://github.com/Mateo0828/Autos-Colombia.git
 cd Autos-Colombia
 ```
 
-Para utilizar específicamente el backend de EA2:
-
-```bash
-git checkout feature/i2-backend
-```
+La rama `main` ya contiene la Iteración 2 (backend y frontend). No hace falta cambiar de rama: quien revise el proyecto clona el repositorio y trabaja sobre `main`.
 
 ---
 
-## 7.2 Crear la base PostgreSQL
+## 7.2 Instalar PostgreSQL y crear la base
 
-Crear:
+### Linux / WSL (Ubuntu)
 
-```text
-autos_colombia
-```
-
-Ejemplo:
+Instalar y arrancar PostgreSQL (si ya está instalado, solo el segundo comando; hay que repetirlo cada vez que se reinicia WSL):
 
 ```bash
-createdb autos_colombia
+sudo apt update && sudo apt install -y postgresql postgresql-contrib
+sudo service postgresql start
 ```
 
-También puede crearse mediante pgAdmin.
+Definir la contraseña del usuario `postgres` (la misma que irá en `DB_PASSWORD` del `.env`) y crear la base:
+
+```bash
+sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'TU_CONTRASENA_POSTGRES';"
+sudo -u postgres psql -c "CREATE DATABASE autos_colombia;"
+```
+
+### Windows
+
+Instalar PostgreSQL desde el instalador oficial (el servicio queda iniciado) y crear la base `autos_colombia` con pgAdmin o con `CREATE DATABASE autos_colombia;` desde `psql`.
+
+> **Importante (Linux/WSL):** el comando `psql -U postgres -d autos_colombia ...` (sin `-h`) usa el socket local y falla con `Peer authentication failed`. Todos los comandos `psql` de este README se ejecutan por TCP (`-h localhost`) con la contraseña del `.env`.
 
 ---
 
@@ -579,6 +586,17 @@ E2E_OPERADOR2_PASSWORD=CONTRASENA_LOCAL_OPERADOR2
 E2E_OPERADOR3_PASSWORD=CONTRASENA_LOCAL_OPERADOR3
 ```
 
+Son contraseñas de demostración, solo para uso local: elija usted los valores (mínimo 8 caracteres). Con ellas inicia sesión en la aplicación:
+
+| Usuario | Rol | Variable del `.env` con su contraseña |
+|---|---|---|
+| `admin` | ADMINISTRADOR | `E2E_ADMIN_PASSWORD` |
+| `operador1` | OPERADOR | `E2E_OPERADOR1_PASSWORD` |
+| `operador2` | OPERADOR | `E2E_OPERADOR2_PASSWORD` |
+| `operador3` | OPERADOR | `E2E_OPERADOR3_PASSWORD` |
+
+La contraseña de cada usuario es la que usted escribió en el `.env` antes de ejecutar `scripts/seed_usuarios.py`. Si cambia el valor en el `.env`, vuelva a ejecutar el seed.
+
 Estas contraseñas:
 
 - son únicamente de desarrollo;
@@ -592,10 +610,27 @@ Estas contraseñas:
 
 ## 8.1 Instalación limpia
 
-Ejecutar:
+Desde la raíz del repositorio, con el `.env` ya creado y PostgreSQL iniciado.
+
+Linux / WSL / Git Bash:
 
 ```bash
-psql -U postgres -d autos_colombia -f sql/autos_colombia.sql
+set -a; source .env; set +a
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f sql/autos_colombia.sql
+```
+
+Windows PowerShell (equivalente; no probado en este entorno):
+
+```powershell
+Get-Content .env | ForEach-Object { if ($_ -match '^\s*([^#=\s]+)\s*=\s*(.*)$') { Set-Item -Path "env:$($Matches[1])" -Value $Matches[2] } }
+$env:PGPASSWORD = $env:DB_PASSWORD
+psql -h $env:DB_HOST -p $env:DB_PORT -U $env:DB_USER -d $env:DB_NAME -f sql/autos_colombia.sql
+```
+
+Si la base no existe (error `database "autos_colombia" does not exist`), créela primero:
+
+```bash
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "CREATE DATABASE autos_colombia;"
 ```
 
 El script:
@@ -607,13 +642,13 @@ El script:
 - incorpora `FUERA_DE_SERVICIO`;
 - carga los datos semilla.
 
-Después ejecutar:
+Después, con el entorno virtual activo (§7.3), ejecutar:
 
 ```bash
 python scripts/seed_usuarios.py
 ```
 
-para generar los hashes de contraseña.
+para generar los hashes de contraseña a partir de las variables `E2E_*_PASSWORD` del `.env`. Este mismo par de pasos (SQL + seed) deja la base limpia de nuevo cuando se necesite.
 
 > `autos_colombia.sql` elimina y recrea las tablas. No debe ejecutarse sobre una base con información que se quiera conservar.
 
@@ -624,7 +659,8 @@ para generar los hashes de contraseña.
 Para conservar una base existente:
 
 ```bash
-psql -U postgres -d autos_colombia -f sql/migracion_iteracion2.sql
+set -a; source .env; set +a
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f sql/migracion_iteracion2.sql
 ```
 
 Después:
@@ -656,6 +692,45 @@ Prueba de conexión con PostgreSQL:
 ```http
 GET /api/db/test
 ```
+
+```bash
+curl http://127.0.0.1:5000/api/db/test
+```
+
+Debe responder `{"estado":"ok", ...}`. Si falla, vea «Solución de problemas» (§22).
+
+## 9.1 Orden de arranque del sistema completo
+
+1. **PostgreSQL** iniciado (WSL: `sudo service postgresql start`).
+2. **Backend:** base cargada y sembrada (§8.1) y `python run.py` en `127.0.0.1:5000`.
+3. **Frontend:** `npm run dev` en `localhost:3000` (siguiente sección).
+
+## 9.2 Ejecutar el frontend
+
+Requisitos: Node.js 18.18 o superior y `npm`. El backend debe estar corriendo.
+
+```bash
+cd frontend
+npm install
+```
+
+Crear `frontend/.env.local` (no se versiona) con:
+
+```env
+NEXT_PUBLIC_API_URL=http://127.0.0.1:5000
+```
+
+> **No definir `NEXT_PUBLIC_USE_MOCK`.** Con `NEXT_PUBLIC_USE_MOCK=true` el frontend usa datos simulados y no consulta el backend.
+
+Iniciar:
+
+```bash
+npm run dev
+```
+
+Abrir `http://localhost:3000` e iniciar sesión con `admin` o `operador1` y la contraseña definida en el `.env` del backend. Si el puerto 3000 está ocupado, Next usa 3001; el CORS del backend está abierto en desarrollo, así que funciona igual. Si el frontend se ejecuta en Windows y el backend en WSL2, `127.0.0.1:5000` se reenvía automáticamente.
+
+Para una compilación de producción: `npm run build` y `npm start`.
 
 ---
 
@@ -1042,9 +1117,14 @@ New-Item -ItemType Directory -Force .\informes\capturas | Out-Null
 
 ### Linux / WSL
 
+Con el entorno virtual activo (el script usa el `python` del PATH), PostgreSQL iniciado y el backend corriendo:
+
 ```bash
+source .venv/bin/activate
 bash scripts/pruebas_i2.sh
 ```
+
+Al terminar, la base queda recreada y sembrada con las contraseñas del `.env`.
 
 ---
 
@@ -1085,44 +1165,22 @@ En la prueba automatizada:
 
 ## Frontend de Iteración 1
 
-El repositorio contiene el frontend construido para EA1 con las pantallas principales:
+Pantallas de EA1: `/entrada`, `/salida`, `/vehiculos-dentro` y `/estado`.
 
-```text
-/entrada
-/salida
-/vehiculos-dentro
-/estado
-```
+## Frontend de Iteración 2
 
-Este frontend fue construido para el contrato original de EA1.
+Implementado en `frontend/` y fusionado en `main`. Incorpora:
 
-## Adaptación necesaria para Iteración 2
+- `/login`, sesión con token en `Authorization` y cierre de sesión;
+- menú y rutas según rol (el OPERADOR no accede a funciones administrativas; el ADMINISTRADOR puede además operar entradas y salidas);
+- `/usuarios`: gestión de usuarios;
+- `/registro`: registro de cliente y vehículo;
+- `/clientes`: modificación de clientes y vehículos;
+- `/celdas`: administración de celdas, con el estado `FUERA_DE_SERVICIO`;
+- Entrada y Salida sin selector de operador (se envía solo `placa` y `codigo_celda`, o solo `placa`);
+- ante un `401`, limpieza de sesión y regreso al login.
 
-El frontend de EA2 será desarrollado/adaptado después de estabilizar el backend.
-
-Debe incorporar:
-
-- `/login`;
-- gestión de sesión;
-- token en `Authorization`;
-- cierre de sesión;
-- menú según rol;
-- gestión de usuarios;
-- registro de cliente y vehículo;
-- modificación de clientes y vehículos;
-- gestión de celdas;
-- estado `FUERA_DE_SERVICIO`;
-- eliminación del selector de operador de Entrada y Salida.
-
-Además:
-
-- Entrada debe enviar solo `placa` y `codigo_celda`.
-- Salida debe enviar solo `placa`.
-- Ante `401`, el frontend debe limpiar la sesión y volver al login.
-- El OPERADOR no debe ver ni acceder a funciones administrativas.
-- El ADMINISTRADOR debe poder realizar las operaciones del OPERADOR.
-
-La integración real del frontend de EA2 se realizará contra el contrato estable del backend descrito en este README y en la guía de integración correspondiente.
+Verificación: 17 pruebas Playwright en modo real contra el backend, sobre `main` en el commit `74c738a` [real]. Cómo ejecutar el frontend: §9.2.
 
 ---
 
@@ -1237,7 +1295,26 @@ Incluye:
 ## Frontend Iteración 2
 
 ```text
-PENDIENTE DE ADAPTACIÓN / INTEGRACIÓN
+IMPLEMENTADO Y VERIFICADO
 ```
 
-El siguiente paso es desarrollar o adaptar el frontend de Iteración 2 utilizando el backend y el contrato de API ya estabilizados.
+Resultado: 17 pruebas Playwright [real] contra el backend, sobre `main` (commit `74c738a`).
+
+Incluye login y sesión, permisos por rol, gestión de usuarios, registro de cliente y vehículo, modificación de clientes, administración de celdas, entrada y salida.
+
+---
+
+# 22. Solución de problemas
+
+| Síntoma | Causa y solución |
+|---|---|
+| `psql: ... Peer authentication failed for user "postgres"` | Se usó `psql -U postgres` sin `-h` (socket local). Use TCP: `PGPASSWORD="$DB_PASSWORD" psql -h localhost -p 5432 -U postgres -d autos_colombia ...` (§8.1). |
+| `connection refused` / `could not connect to server` | PostgreSQL no está iniciado. En WSL: `sudo service postgresql start`. |
+| `password authentication failed` | `DB_PASSWORD` del `.env` no coincide con la clave de `postgres`. Cámbiela con `sudo -u postgres psql -c "ALTER USER postgres PASSWORD '...';"` o corrija el `.env`. |
+| `database "autos_colombia" does not exist` | Créela: `CREATE DATABASE autos_colombia;` (§7.2 y §8.1). |
+| El backend no arranca: puerto 5000 ocupado | Hay otro proceso en el 5000. Búsquelo con `ss -ltnp | grep 5000` (Linux/WSL) o `netstat -ano | findstr :5000` (Windows) y ciérrelo. |
+| No puedo iniciar sesión (401 «Usuario o contraseña incorrectos») | Los hashes no corresponden a las contraseñas del `.env` (se cambiaron después del seed, o se cargó el SQL y no se hizo el seed). Re-ejecute `python scripts/seed_usuarios.py` y use esas contraseñas. |
+| `seed_usuarios.py`: «Falta configurar la variable E2E_…» | Agregue las cuatro `E2E_*_PASSWORD` al `.env` (mínimo 8 caracteres). |
+| El frontend muestra datos de ejemplo o no refleja el backend | `NEXT_PUBLIC_USE_MOCK=true` está definida. Quítela de `frontend/.env.local` (y del entorno) y reinicie `npm run dev`. |
+| El frontend muestra «No se pudo conectar con el servidor» o errores de CORS | El backend no está corriendo o `NEXT_PUBLIC_API_URL` es incorrecta. Debe ser `http://127.0.0.1:5000` en `frontend/.env.local`; reinicie `npm run dev` después de cambiarla. |
+| `pruebas_i2.sh` borró mis datos | El script recrea la base. Úselo solo sobre una base de pruebas. |
