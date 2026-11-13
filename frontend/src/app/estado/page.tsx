@@ -66,7 +66,9 @@ export default function StatusPage() {
       {!c && loading && <p className="text-sm text-muted">Cargando…</p>}
       {status && c && (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div
+            className={`grid grid-cols-2 gap-4 ${c.fuera_de_servicio !== undefined ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}
+          >
             <StatCard large label="Celdas totales" value={c.total} note="Capacidad instalada" />
             <StatCard
               large
@@ -82,6 +84,14 @@ export default function StatusPage() {
               tone="warning"
               note={`${percent(c.ocupadas, c.total).toString().replace(".", ",")}% de ocupación`}
             />
+            {c.fuera_de_servicio !== undefined && (
+              <StatCard
+                large
+                label="Fuera de servicio"
+                value={c.fuera_de_servicio}
+                note="Celdas deshabilitadas"
+              />
+            )}
             <StatCard large label="Vehículos dentro" value={status.vehiculos_dentro} note="Estancias activas" />
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">

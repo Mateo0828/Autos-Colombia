@@ -11,22 +11,20 @@ import {
   normalizePlate,
   vehicleTypeLabel,
 } from "@/lib/format";
-import { useOperators } from "@/lib/useOperators";
 import type { ActiveStay } from "@/types/api";
 import { useSummary } from "@/components/SummaryContext";
 import PageHeader from "@/components/PageHeader";
 import InfoGrid from "@/components/InfoGrid";
-import OperatorSelect from "@/components/OperatorSelect";
+import { useAuth } from "@/components/AuthContext";
 import PrimaryButton from "@/components/PrimaryButton";
 import Alert from "@/components/Alert";
 
 export default function ExitForm() {
   const { refresh } = useSummary();
-  const { operators, error: operatorsError } = useOperators();
+  const { user } = useAuth();
   const initialPlate = normalizePlate(useSearchParams().get("placa") ?? "");
 
   const [plate, setPlate] = useState(initialPlate);
-  const [operator, setOperator] = useState<number | null>(null);
   const [stay, setStay] = useState<ActiveStay | null>(null);
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -70,11 +68,11 @@ export default function ExitForm() {
   }
 
   async function onExit() {
-    if (!stay || operator === null) return;
+    if (!stay) return;
     setSubmitting(true);
     setError(null);
     try {
-      const r = await api.registerExit({ placa: stay.vehiculo.placa, id_operador: operator });
+      const r = await api.registerExit({ placa: stay.vehiculo.placa });
       setSuccess({
         title: `Salida registrada. Celda ${r.estancia.celda.codigo} liberada`,
         detail: `Salida confirmada ${formatDateTime(r.estancia.fecha_hora_salida).toLowerCase()}`,
@@ -99,12 +97,11 @@ export default function ExitForm() {
 
       {success && <Alert kind="success" title={success.title} detail={success.detail} />}
       {error && <Alert kind="error" title={error} />}
-      {operatorsError && <Alert kind="error" title={operatorsError} />}
 
       <section className="mb-4 rounded-2xl border border-line bg-card p-6">
         <p className="text-[10px] font-bold uppercase tracking-widest text-accent">Búsqueda de estancia</p>
         <h2 className="mt-1 text-lg">Buscar vehículo</h2>
-        <form onSubmit={onSearch} className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+        <form onSubmit={onSearch} className="mt-5 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
           <div>
             <label htmlFor="plate" className="mb-2 block text-xs font-bold">
               Placa
@@ -117,12 +114,6 @@ export default function ExitForm() {
               autoComplete="off"
               className="h-11 w-full rounded-xl border border-line bg-[#0a1b3d] px-4 text-sm font-bold uppercase outline-none placeholder:font-normal placeholder:text-muted focus:border-accent"
             />
-          </div>
-          <div>
-            <label htmlFor="operator" className="mb-2 block text-xs font-bold">
-              Operador responsable
-            </label>
-            <OperatorSelect id="operator" operators={operators} value={operator} onChange={setOperator} />
           </div>
           <PrimaryButton type="submit" disabled={!plate.trim() || searching}>
             <Search size={16} />
@@ -163,14 +154,14 @@ export default function ExitForm() {
             <p className="text-xs text-muted">
               Al confirmar, la celda <strong className="text-foreground">{stay.celda.codigo}</strong> quedará disponible.
             </p>
-            <PrimaryButton onClick={onExit} disabled={operator === null || submitting}>
+            <PrimaryButton onClick={onExit} disabled={submitting}>
               {submitting ? "Registrando…" : "Registrar salida"}
               <ArrowRight size={16} />
             </PrimaryButton>
           </div>
-          {operator === null && (
-            <p className="mt-3 text-right text-xs text-warning">Selecciona un operador para confirmar la salida.</p>
-          )}
+          <p className="mt-3 text-right text-xs text-muted" data-testid="operator-label">
+            Operador: <strong className="text-foreground">{user?.nombre}</strong>
+          </p>
         </section>
       )}
     </>

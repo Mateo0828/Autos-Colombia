@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Check, Info, Search, X } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Check, Info, Search, UserPlus, X } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import {
   PLATE_ERROR,
@@ -11,27 +12,25 @@ import {
   normalizePlate,
   vehicleTypeLabel,
 } from "@/lib/format";
-import { useOperators } from "@/lib/useOperators";
 import type { Cell, EntryValidation } from "@/types/api";
 import { useSummary } from "@/components/SummaryContext";
 import PageHeader from "@/components/PageHeader";
 import StepCard from "@/components/StepCard";
 import InfoGrid from "@/components/InfoGrid";
 import CellChip from "@/components/CellChip";
-import OperatorSelect from "@/components/OperatorSelect";
+import { useAuth } from "@/components/AuthContext";
 import PrimaryButton from "@/components/PrimaryButton";
 import Alert from "@/components/Alert";
 
 export default function EntryPage() {
   const { refresh } = useSummary();
-  const { operators, error: operatorsError } = useOperators();
+  const { user } = useAuth();
 
   const [plate, setPlate] = useState("");
   const [checking, setChecking] = useState(false);
   const [validation, setValidation] = useState<EntryValidation | null>(null);
   const [cells, setCells] = useState<Cell[]>([]);
   const [cell, setCell] = useState<string | null>(null);
-  const [operator, setOperator] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ title: string; detail: string } | null>(null);
@@ -71,14 +70,13 @@ export default function EntryPage() {
   }
 
   async function onRegister() {
-    if (!vehicle || !cell || operator === null) return;
+    if (!vehicle || !cell) return;
     setSubmitting(true);
     setError(null);
     try {
       const r = await api.registerEntry({
         placa: vehicle.placa,
         codigo_celda: cell,
-        id_operador: operator,
       });
       setSuccess({
         title: `Entrada registrada. Celda ${r.estancia.celda.codigo} ocupada`,
@@ -122,7 +120,6 @@ export default function EntryPage() {
 
       {success && <Alert kind="success" title={success.title} detail={success.detail} />}
       {error && <Alert kind="error" title={error} />}
-      {operatorsError && <Alert kind="error" title={operatorsError} />}
 
       <StepCard step={1} kicker="Primer paso" title="Consultar vehículo">
         <form onSubmit={onCheck}>
@@ -196,6 +193,15 @@ export default function EntryPage() {
           <p role="alert" className="text-sm font-bold text-danger">
             {validation.motivo}
           </p>
+          {!validation.validaciones.vehiculo_registrado && (
+            <Link
+              href={`/registro?placa=${encodeURIComponent(normalizePlate(plate))}`}
+              className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl border border-accent/40 bg-[#0a1b3d]/60 px-5 text-sm font-bold text-accent hover:bg-accent/10"
+            >
+              <UserPlus size={16} />
+              Registrar cliente y vehículo
+            </Link>
+          )}
         </StepCard>
       ) : (
         <StepCard
@@ -240,14 +246,12 @@ export default function EntryPage() {
               ))}
             </div>
           )}
-          <label htmlFor="operator" className="mb-2 mt-6 block text-xs font-bold">
-            Operador responsable
-          </label>
-          <div className="flex gap-3">
-            <div className="min-w-0 flex-1">
-              <OperatorSelect id="operator" operators={operators} value={operator} onChange={setOperator} />
-            </div>
-            <PrimaryButton onClick={onRegister} disabled={!cell || operator === null || submitting}>
+          <div className="mt-6 flex items-center justify-between gap-3">
+            <p className="text-sm" data-testid="operator-label">
+              <span className="text-muted">Operador: </span>
+              <strong>{user?.nombre}</strong>
+            </p>
+            <PrimaryButton onClick={onRegister} disabled={!cell || submitting}>
               {submitting ? "Registrando…" : "Registrar entrada"}
               <ArrowRight size={16} />
             </PrimaryButton>
