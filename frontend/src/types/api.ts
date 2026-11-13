@@ -10,6 +10,54 @@ export interface Operator {
   nombre: string;
 }
 
+// ---- Authentication and users (contract 03) ----
+
+export type Role = "ADMINISTRADOR" | "OPERADOR";
+export type UserStatus = "ACTIVO" | "INACTIVO";
+
+export interface SessionUser {
+  id_operador: number;
+  nombre: string;
+  usuario: string;
+  rol: Role;
+}
+
+export interface LoginResult {
+  estado: "ok";
+  token: string;
+  expira: string;
+  usuario: SessionUser;
+}
+
+export interface MeResult {
+  estado: "ok";
+  usuario: SessionUser;
+}
+
+export interface User extends SessionUser {
+  estado: UserStatus;
+  fecha_creacion: string;
+}
+
+export interface UserList {
+  estado: "ok";
+  usuarios: User[];
+}
+
+// Assumed shape (contract 03 only says "el usuario creado"): see report.
+export interface UserResult {
+  estado: "ok";
+  mensaje?: string;
+  usuario: User;
+}
+
+export interface MessageResult {
+  estado: "ok";
+  mensaje: string;
+}
+
+// ---- Clients and vehicles ----
+
 export interface Client {
   id_cliente: number;
   documento: string;
@@ -29,6 +77,38 @@ export interface VehicleWithClient extends Vehicle {
   cliente: Client;
 }
 
+export interface ClientDetail extends Client {
+  vehiculos: (Vehicle & { estado_mensualidad: string })[];
+}
+
+// Assumed shape (contract 03: "Datos del cliente y sus vehículos").
+export interface ClientResult {
+  estado: "ok";
+  mensaje?: string;
+  cliente: ClientDetail;
+}
+
+// D-26: flat request body; response is {estado, cliente, vehiculo} without `mensaje`.
+export interface RegistrationResult {
+  estado: "ok";
+  mensaje?: string;
+  cliente?: Client;
+  vehiculo?: Vehicle;
+}
+
+export interface VehicleResult {
+  estado: "ok";
+  mensaje?: string;
+  vehiculo: Vehicle & { id_cliente?: number; estado_mensualidad?: string };
+}
+
+// D-26: PUT /api/clientes/{id} does not return the vehicle list.
+export interface ClientUpdateResult {
+  estado: "ok";
+  mensaje?: string;
+  cliente: Client;
+}
+
 export interface EntryValidation {
   estado: "ok";
   puede_ingresar: boolean;
@@ -41,11 +121,16 @@ export interface EntryValidation {
   };
 }
 
+// ---- Cells ----
+
+export type CellState = "DISPONIBLE" | "OCUPADA" | "FUERA_DE_SERVICIO";
+export type CellType = "CARRO" | "MOTO";
+
 export interface Cell {
   id_celda: number;
   codigo: string;
-  tipo_celda: "CARRO" | "MOTO";
-  estado: "DISPONIBLE" | "OCUPADA";
+  tipo_celda: CellType;
+  estado: CellState;
 }
 
 export interface AvailableCells {
@@ -54,11 +139,19 @@ export interface AvailableCells {
   celdas: Cell[];
 }
 
-export interface OperatorList {
+export interface CellList {
   estado: "ok";
   cantidad: number;
-  operadores: Operator[];
+  celdas: Cell[];
 }
+
+export interface CellChange {
+  estado: "ok";
+  mensaje?: string;
+  celda?: Cell;
+}
+
+// ---- Stays ----
 
 export interface EntryResult {
   estado: "ok";
@@ -110,5 +203,9 @@ export interface CellGroup {
 export interface ParkingStatus {
   estado: "ok";
   vehiculos_dentro: number;
-  celdas: CellGroup & { carro: CellGroup; moto: CellGroup };
+  celdas: CellGroup & {
+    fuera_de_servicio?: number;
+    carro: CellGroup;
+    moto: CellGroup;
+  };
 }
