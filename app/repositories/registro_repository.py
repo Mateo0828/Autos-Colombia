@@ -1,4 +1,7 @@
 from app.database import get_connection
+from app.services.mensualidad_service import (
+    calcular_estado_mensualidad
+)
 
 
 def registrar_cliente_vehiculo(
@@ -9,6 +12,16 @@ def registrar_cliente_vehiculo(
     color,
     tipo_vehiculo
 ):
+    """
+    Registra un vehículo asociado a un cliente nuevo
+    o existente dentro de una única transacción.
+
+    Iteración 3:
+    Los vehículos nuevos se registran sin cobertura
+    de mensualidad. Su activación requiere el registro
+    del primer pago, conforme a la RN-32.
+    """
+
     with get_connection() as conexion:
         with conexion.cursor() as cursor:
 
@@ -51,7 +64,9 @@ def registrar_cliente_vehiculo(
 
             id_cliente = cliente[0]
 
-            # Crear vehículo asociado.
+            # Crear vehículo asociado sin cobertura inicial.
+            # La mensualidad se activa únicamente mediante
+            # el registro del primer pago.
             cursor.execute(
                 """
                 INSERT INTO vehiculo (
@@ -59,17 +74,21 @@ def registrar_cliente_vehiculo(
                     marca,
                     color,
                     tipo_vehiculo,
-                    estado_mensualidad,
+                    fecha_inicio_mensualidad,
+                    fecha_corte,
                     id_cliente
                 )
-                VALUES (%s, %s, %s, %s, 'ACTIVA', %s)
+                VALUES (
+                    %s, %s, %s, %s, NULL, NULL, %s
+                )
                 RETURNING
                     id_vehiculo,
                     placa,
                     marca,
                     color,
                     tipo_vehiculo,
-                    estado_mensualidad;
+                    fecha_inicio_mensualidad,
+                    fecha_corte;
                 """,
                 (
                     placa,
@@ -96,6 +115,22 @@ def registrar_cliente_vehiculo(
             "marca": vehiculo[2],
             "color": vehiculo[3],
             "tipo_vehiculo": vehiculo[4],
-            "estado_mensualidad": vehiculo[5]
+
+            # Estado calculado dinámicamente.
+            "estado_mensualidad": calcular_estado_mensualidad(
+                vehiculo[6]
+            ),
+
+            # Información de cobertura de la Iteración 3.
+            "fecha_inicio_mensualidad": (
+                vehiculo[5].isoformat()
+                if vehiculo[5] is not None
+                else None
+            ),
+            "fecha_corte": (
+                vehiculo[6].isoformat()
+                if vehiculo[6] is not None
+                else None
+            )
         }
     }

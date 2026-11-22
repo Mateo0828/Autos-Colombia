@@ -1,3 +1,4 @@
+
 from flask import Flask
 from flask_cors import CORS
 
@@ -12,13 +13,15 @@ from app.routes.operador_routes import operador_bp
 from app.routes.usuario_routes import usuario_bp
 from app.routes.registro_routes import registro_bp
 from app.routes.cliente_routes import cliente_bp
-
 from app.routes.auth_routes import auth_bp
+from app.routes.pago_routes import pago_bp
+
 
 def create_app():
     app = Flask(__name__)
     CORS(app)
 
+    # Iteraciones 1 y 2
     app.register_blueprint(vehiculo_bp)
     app.register_blueprint(celda_bp)
     app.register_blueprint(entrada_bp)
@@ -31,12 +34,15 @@ def create_app():
     app.register_blueprint(registro_bp)
     app.register_blueprint(cliente_bp)
 
+    # Iteracion 3 - Gestion de pagos
+    app.register_blueprint(pago_bp)
+
     @app.route("/")
     def inicio():
         return {
             "sistema": "Autos Colombia",
             "estado": "Backend funcionando",
-            "iteracion": 1
+            "iteracion": 3
         }
 
     @app.route("/api/db/test")
