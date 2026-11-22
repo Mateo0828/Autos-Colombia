@@ -1,5 +1,8 @@
 from app.database import get_connection
 
+from app.services.mensualidad_service import (
+    calcular_estado_mensualidad
+)
 
 def existe_estancia_activa(id_vehiculo):
     consulta = """
@@ -24,13 +27,151 @@ def registrar_entrada(
     id_operador,
     tipo_vehiculo
 ):
+    """
+    Registra la entrada de un vehículo mediante una
+    única transacción de base de datos.
+
+    Iteración 1:
+    - Verifica la existencia del operador.
+    - Valida la disponibilidad de la celda.
+    - Comprueba la compatibilidad de la celda.
+    - Crea la estancia y ocupa la celda.
+
+    Iteración 3:
+    - Bloquea el vehículo antes de registrar la entrada.
+    - Reconsulta las fechas de cobertura.
+    - Calcula nuevamente la vigencia.
+    - Verifica que no exista otra estancia activa.
+    - Utiliza el tipo de vehículo actualizado.
+
+    La creación de la estancia y la ocupación de la
+    celda se ejecutan conjuntamente.
+
+    Ante una excepción, la conexión revierte
+    automáticamente la transacción.
+
+    Referencias:
+    RF-I3-11, RN-29, RN-30 y RNF-I3-08.
+    """
+
     with get_connection() as conexion:
         with conexion.cursor() as cursor:
 
-            # Verificar que el operador exista.
+            # =============================================
+            # 1. BLOQUEAR Y RECONSULTAR EL VEHICULO
+            # =============================================
+            #
+            # Se utiliza el mismo bloqueo de fila que
+            # emplea el módulo de pagos.
+            #
+            # Las condiciones se consultan nuevamente
+            # dentro de la transacción de entrada.
+
             cursor.execute(
                 """
-                SELECT id_operador, nombre
+                SELECT
+                    id_vehiculo,
+                    placa,
+                    marca,
+                    color,
+                    tipo_vehiculo,
+                    fecha_inicio_mensualidad,
+                    fecha_corte
+                FROM vehiculo
+                WHERE id_vehiculo = %s
+                FOR UPDATE;
+                """,
+                (id_vehiculo,)
+            )
+
+            vehiculo = cursor.fetchone()
+
+            if vehiculo is None:
+
+                raise ValueError(
+                    "El vehículo no se encuentra registrado."
+                )
+
+            placa_actual = vehiculo[1]
+
+            marca_actual = vehiculo[2]
+
+            color_actual = vehiculo[3]
+
+            tipo_vehiculo_actual = vehiculo[4]
+
+            fecha_inicio_mensualidad = vehiculo[5]
+
+            fecha_corte = vehiculo[6]
+
+            # =============================================
+            # 2. REVALIDAR COBERTURA DE LA MENSUALIDAD
+            # =============================================
+            #
+            # RN-32:
+            # Un vehículo sin primer pago no puede ingresar.
+
+            if (
+                fecha_inicio_mensualidad is None
+                or fecha_corte is None
+            ):
+
+                raise ValueError(
+                    "El vehículo no tiene un primer pago "
+                    "de mensualidad registrado."
+                )
+
+            # RN-29 y RN-30:
+            # La fecha actual debe ser anterior al corte.
+
+            estado_mensualidad = calcular_estado_mensualidad(
+                fecha_corte
+            )
+
+            if estado_mensualidad != "ACTIVA":
+
+                raise ValueError(
+                    "La mensualidad del vehículo se encuentra "
+                    "vencida. Debe registrar una renovación "
+                    "que restablezca su vigencia."
+                )
+
+            # =============================================
+            # 3. REVALIDAR ESTANCIA ACTIVA
+            # =============================================
+            #
+            # Esta consulta utiliza la misma conexión
+            # y transacción que registra la entrada.
+
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM estancia
+                    WHERE id_vehiculo = %s
+                      AND estado = 'ACTIVA'
+                );
+                """,
+                (id_vehiculo,)
+            )
+
+            tiene_estancia_activa = cursor.fetchone()[0]
+
+            if tiene_estancia_activa:
+
+                raise ValueError(
+                    "El vehículo ya tiene una estancia activa."
+                )
+
+            # =============================================
+            # 4. VERIFICAR OPERADOR
+            # =============================================
+
+            cursor.execute(
+                """
+                SELECT
+                    id_operador,
+                    nombre
                 FROM operador
                 WHERE id_operador = %s;
                 """,
@@ -40,10 +181,15 @@ def registrar_entrada(
             operador = cursor.fetchone()
 
             if operador is None:
-                raise ValueError("El operador no existe.")
 
-            # Bloquear temporalmente la celda mientras
-            # se realiza el registro de entrada.
+                raise ValueError(
+                    "El operador no existe."
+                )
+
+            # =============================================
+            # 5. BLOQUEAR LA CELDA SELECCIONADA
+            # =============================================
+
             cursor.execute(
                 """
                 SELECT
@@ -61,41 +207,90 @@ def registrar_entrada(
             celda = cursor.fetchone()
 
             if celda is None:
-                raise ValueError("La celda no existe.")
+
+                raise ValueError(
+                    "La celda no existe."
+                )
 
             id_celda = celda[0]
+
             codigo = celda[1]
+
             tipo_celda = celda[2]
+
             estado_celda = celda[3]
 
+            # =============================================
+            # 6. VALIDAR DISPONIBILIDAD DE LA CELDA
+            # =============================================
+
             if estado_celda == "OCUPADA":
+
                 raise ValueError(
                     "La celda seleccionada se encuentra ocupada."
                 )
 
             if estado_celda == "FUERA_DE_SERVICIO":
+
                 raise ValueError(
-                    "La celda seleccionada se encuentra fuera de servicio."
+                    "La celda seleccionada se encuentra "
+                    "fuera de servicio."
                 )
 
             if estado_celda != "DISPONIBLE":
+
                 raise ValueError(
-                    "La celda seleccionada no se encuentra disponible."
+                    "La celda seleccionada no se encuentra "
+                    "disponible."
                 )
+
+            # =============================================
+            # 7. VALIDAR COMPATIBILIDAD
+            # =============================================
+            #
+            # Se utiliza el tipo consultado después de
+            # bloquear el vehículo, evitando depender de
+            # información obtenida en la validación previa.
 
             tipo_requerido = (
                 "MOTO"
-                if tipo_vehiculo == "MOTO"
+                if tipo_vehiculo_actual == "MOTO"
                 else "CARRO"
             )
 
             if tipo_celda != tipo_requerido:
+
                 raise ValueError(
                     "La celda seleccionada no es compatible "
                     "con el tipo de vehículo."
                 )
 
-            # Crear estancia activa.
+            # =============================================
+            # 8. COMPROBACION FINAL DE VIGENCIA
+            # =============================================
+            #
+            # La espera por el bloqueo de una celda podría
+            # extenderse hasta el siguiente día.
+            #
+            # Por ello, se comprueba nuevamente la vigencia
+            # inmediatamente antes de crear la estancia.
+
+            estado_mensualidad = calcular_estado_mensualidad(
+                fecha_corte
+            )
+
+            if estado_mensualidad != "ACTIVA":
+
+                raise ValueError(
+                    "La mensualidad del vehículo se encuentra "
+                    "vencida. Debe registrar una renovación "
+                    "que restablezca su vigencia."
+                )
+
+            # =============================================
+            # 9. CREAR ESTANCIA ACTIVA
+            # =============================================
+
             cursor.execute(
                 """
                 INSERT INTO estancia (
@@ -118,7 +313,10 @@ def registrar_entrada(
 
             estancia = cursor.fetchone()
 
-            # La celda pasa a estar ocupada.
+            # =============================================
+            # 10. OCUPAR LA CELDA
+            # =============================================
+
             cursor.execute(
                 """
                 UPDATE celda
@@ -128,23 +326,50 @@ def registrar_entrada(
                 (id_celda,)
             )
 
+            # =============================================
+            # 11. CONSTRUIR RESULTADO DE LA OPERACION
+            # =============================================
+
+            resultado = {
+                "id_estancia": estancia[0],
+
+                "fecha_hora_entrada": (
+                    estancia[1].isoformat()
+                ),
+
+                "estado": "ACTIVA",
+
+                "celda": {
+                    "id_celda": id_celda,
+                    "codigo": codigo,
+                    "tipo_celda": tipo_celda,
+                    "estado": "OCUPADA"
+                },
+
+                "operador": {
+                    "id_operador": operador[0],
+                    "nombre": operador[1]
+                },
+
+                "vehiculo": {
+                    "id_vehiculo": id_vehiculo,
+                    "placa": placa_actual,
+                    "marca": marca_actual,
+                    "color": color_actual,
+                    "tipo_vehiculo": tipo_vehiculo_actual
+                }
+            }
+
+        # =============================================
+        # 12. CONFIRMAR TRANSACCION
+        # =============================================
+        #
+        # Solo se confirman los cambios después de
+        # completar todas las validaciones y operaciones.
+
         conexion.commit()
 
-    return {
-        "id_estancia": estancia[0],
-        "fecha_hora_entrada": estancia[1].isoformat(),
-        "estado": "ACTIVA",
-        "celda": {
-            "id_celda": id_celda,
-            "codigo": codigo,
-            "tipo_celda": tipo_celda,
-            "estado": "OCUPADA"
-        },
-        "operador": {
-            "id_operador": operador[0],
-            "nombre": operador[1]
-        }
-    }
+    return resultado
 
 def registrar_salida(placa, id_operador):
     with get_connection() as conexion:

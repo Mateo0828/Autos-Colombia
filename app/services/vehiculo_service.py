@@ -1,112 +1,159 @@
-from app.repositories.estancia_repository import existe_estancia_activa
 from app.repositories.vehiculo_repository import (
     actualizar_vehiculo,
     buscar_por_placa,
+    TipoVehiculoConEstanciaActivaError
 )
-from app.services.validacion_service import validar_placa
 
+from app.services.validacion_service import (
+    validar_placa
+)
+
+
+# =========================================================
+# EXCEPCIONES DEL SERVICIO
+# =========================================================
 
 class VehiculoNoEncontradoError(Exception):
     pass
 
-class TipoVehiculoConEstanciaActivaError(Exception):
-    pass
 
+# =========================================================
+# CONSULTAR VEHICULO
+# =========================================================
 
 def consultar_vehiculo(placa):
+    """
+    Normaliza la placa y consulta la información
+    del vehículo.
+    """
+
     placa = validar_placa(placa)
 
     return buscar_por_placa(placa)
+
+
+# =========================================================
+# MODIFICAR VEHICULO
+# =========================================================
 
 def modificar_vehiculo(
     placa,
     marca=None,
     color=None,
-    tipo_vehiculo=None,
-    estado_mensualidad=None
+    tipo_vehiculo=None
 ):
+    """
+    Gestiona la modificación administrativa del vehículo.
+
+    Atributos permitidos:
+    - Marca.
+    - Color.
+    - Tipo de vehículo.
+
+    Iteración 3:
+    La mensualidad no puede modificarse manualmente.
+
+    La validación de estancia activa y la actualización
+    se realizan dentro de una única transacción en el
+    repositorio.
+
+    Los atributos omitidos conservan su valor actual,
+    incluso cuando existen modificaciones simultáneas.
+
+    Referencias:
+    RF-I3-15, RN-34 y RN-38.
+    """
+
+    # =============================================
+    # 1. VALIDAR PLACA
+    # =============================================
+
     placa = validar_placa(placa)
 
-    vehiculo = buscar_por_placa(placa)
+    # =============================================
+    # 2. VALIDAR MARCA
+    # =============================================
 
-    if vehiculo is None:
+    if marca is not None:
+
+        marca = str(marca).strip()
+
+        if not marca:
+
+            raise ValueError(
+                "La marca del vehículo es obligatoria."
+            )
+
+        if len(marca) > 50:
+
+            raise ValueError(
+                "La marca no puede superar los "
+                "50 caracteres."
+            )
+
+    # =============================================
+    # 3. VALIDAR COLOR
+    # =============================================
+
+    if color is not None:
+
+        color = str(color).strip()
+
+        if not color:
+
+            raise ValueError(
+                "El color del vehículo es obligatorio."
+            )
+
+        if len(color) > 30:
+
+            raise ValueError(
+                "El color no puede superar los "
+                "30 caracteres."
+            )
+
+    # =============================================
+    # 4. VALIDAR TIPO DE VEHICULO
+    # =============================================
+
+    if tipo_vehiculo is not None:
+
+        tipo_vehiculo = (
+            str(tipo_vehiculo).strip().upper()
+        )
+
+        if tipo_vehiculo not in (
+            "MOTO",
+            "AUTOMOVIL",
+            "CAMIONETA"
+        ):
+
+            raise ValueError(
+                "El tipo de vehículo debe ser MOTO, "
+                "AUTOMOVIL o CAMIONETA."
+            )
+
+    # =============================================
+    # 5. ACTUALIZACION TRANSACCIONAL
+    # =============================================
+    #
+    # No se realiza una consulta previa independiente
+    # de la estancia activa.
+    #
+    # Esa comprobación se ejecuta bajo el bloqueo
+    # del vehículo dentro del repositorio.
+
+    resultado = actualizar_vehiculo(
+        placa=placa,
+        marca=marca,
+        color=color,
+        tipo_vehiculo=tipo_vehiculo
+    )
+
+    if resultado is None:
+
         raise VehiculoNoEncontradoError(
             "El vehículo solicitado no existe."
         )
 
-    marca_actualizada = (
-        vehiculo["marca"]
-        if marca is None
-        else str(marca).strip()
-    )
-
-    color_actualizado = (
-        vehiculo["color"]
-        if color is None
-        else str(color).strip()
-    )
-
-    tipo_actualizado = (
-        vehiculo["tipo_vehiculo"]
-        if tipo_vehiculo is None
-        else str(tipo_vehiculo).strip().upper()
-    )
-
-    mensualidad_actualizada = (
-        vehiculo["estado_mensualidad"]
-        if estado_mensualidad is None
-        else str(estado_mensualidad).strip().upper()
-    )
-
-    if not marca_actualizada:
-        raise ValueError(
-            "La marca del vehículo es obligatoria."
-        )
-
-    if len(marca_actualizada) > 50:
-        raise ValueError(
-            "La marca no puede superar los 50 caracteres."
-        )
-
-    if not color_actualizado:
-        raise ValueError(
-            "El color del vehículo es obligatorio."
-        )
-
-    if len(color_actualizado) > 30:
-        raise ValueError(
-            "El color no puede superar los 30 caracteres."
-        )
-
-    if tipo_actualizado not in (
-        "MOTO",
-        "AUTOMOVIL",
-        "CAMIONETA"
-    ):
-        raise ValueError(
-            "El tipo de vehículo debe ser MOTO, AUTOMOVIL o CAMIONETA."
-        )
-
-    if mensualidad_actualizada not in (
-        "ACTIVA",
-        "INACTIVA"
-    ):
-        raise ValueError(
-            "El estado de mensualidad debe ser ACTIVA o INACTIVA."
-        )
-
-    if (
-        tipo_actualizado != vehiculo["tipo_vehiculo"]
-        and existe_estancia_activa(vehiculo["id_vehiculo"])
-    ):
-        raise TipoVehiculoConEstanciaActivaError(
-            "No es posible cambiar el tipo de vehículo mientras tenga una estancia activa."
-        )
-
-    return actualizar_vehiculo(
-        placa,
-        marca_actualizada,
-        color_actualizado,
-        tipo_actualizado,
-        mensualidad_actualizada
-    )
+    return resultado
