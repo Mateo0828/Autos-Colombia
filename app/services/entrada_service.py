@@ -1,5 +1,6 @@
 from app.repositories.estancia_repository import (
-    registrar_entrada
+    registrar_entrada,
+    consultar_celda_para_entrada
 )
 
 from app.services.validacion_service import (
@@ -10,6 +11,72 @@ from app.services.validacion_service import (
 )
 
 
+# =========================================================
+# VALIDACION PREVIA DE CELDA
+# =========================================================
+
+def validar_celda_para_entrada(
+    codigo_celda,
+    tipo_vehiculo
+):
+    """
+    Comprueba las condiciones iniciales de la celda.
+
+    Los incumplimientos detectados en esta etapa
+    corresponden a rechazos ordinarios de la operación.
+
+    El repositorio vuelve a comprobar las condiciones
+    después de adquirir los bloqueos transaccionales.
+    """
+
+    celda = consultar_celda_para_entrada(
+        codigo_celda
+    )
+
+    if celda is None:
+
+        raise ValueError(
+            "La celda no existe."
+        )
+
+    if celda["estado"] == "OCUPADA":
+
+        raise ValueError(
+            "La celda seleccionada se encuentra ocupada."
+        )
+
+    if celda["estado"] == "FUERA_DE_SERVICIO":
+
+        raise ValueError(
+            "La celda seleccionada se encuentra "
+            "fuera de servicio."
+        )
+
+    if celda["estado"] != "DISPONIBLE":
+
+        raise ValueError(
+            "La celda seleccionada no se encuentra "
+            "disponible."
+        )
+
+    tipo_requerido = (
+        "MOTO"
+        if tipo_vehiculo == "MOTO"
+        else "CARRO"
+    )
+
+    if celda["tipo_celda"] != tipo_requerido:
+
+        raise ValueError(
+            "La celda seleccionada no es compatible "
+            "con el tipo de vehículo."
+        )
+
+
+# =========================================================
+# REGISTRO DE ENTRADA
+# =========================================================
+
 def crear_entrada(
     placa,
     codigo_celda,
@@ -18,29 +85,33 @@ def crear_entrada(
     """
     Gestiona el registro de entrada de un vehículo.
 
-    Realiza una validación inicial de los datos y
-    verifica las condiciones de ingreso.
+    Iteración 1:
+    Conserva las condiciones operativas del parqueadero.
+
+    Iteración 2:
+    El responsable se obtiene de la sesión autenticada.
 
     Iteración 3:
-    La mensualidad debe encontrarse vigente para
-    autorizar la entrada.
+    Comprueba la vigencia de la mensualidad y conserva
+    la integridad de la operación ante solicitudes
+    concurrentes.
 
-    La operación transaccional del repositorio vuelve
-    a comprobar la cobertura, la estancia activa y
-    la disponibilidad de la celda.
-
-    El identificador del operador es suministrado
-    por la ruta a partir de la sesión autenticada.
+    La validación inicial permite identificar rechazos
+    ordinarios. La revalidación transaccional detecta
+    conflictos posteriores.
 
     Referencias:
-    RF-I3-11, RN-29, RN-30 y HU-I3-05.
+    RF-I3-11, RN-29, RN-30, RN-34,
+    RNF-I3-07, HU-I3-05 y DS-01.
     """
 
-    # =============================================
-    # 1. VALIDAR DATOS DE LA SOLICITUD
-    # =============================================
+    # =====================================================
+    # 1. VALIDAR DATOS
+    # =====================================================
 
-    placa = validar_placa(placa)
+    placa = validar_placa(
+        placa
+    )
 
     codigo_celda = validar_codigo_celda(
         codigo_celda
@@ -50,11 +121,13 @@ def crear_entrada(
         id_operador
     )
 
-    # =============================================
-    # 2. VALIDACION PREVIA DE INGRESO
-    # =============================================
+    # =====================================================
+    # 2. VALIDAR CONDICIONES DEL VEHICULO
+    # =====================================================
 
-    validacion = validar_ingreso(placa)
+    validacion = validar_ingreso(
+        placa
+    )
 
     if not validacion["puede_ingresar"]:
 
@@ -64,12 +137,24 @@ def crear_entrada(
 
     vehiculo = validacion["vehiculo"]
 
-    # =============================================
-    # 3. REGISTRO TRANSACCIONAL
-    # =============================================
+    # =====================================================
+    # 3. VALIDAR DISPONIBILIDAD INICIAL DE CELDA
+    # =====================================================
+
+    validar_celda_para_entrada(
+        codigo_celda=codigo_celda,
+        tipo_vehiculo=vehiculo["tipo_vehiculo"]
+    )
+
+    # =====================================================
+    # 4. REGISTRO TRANSACCIONAL
+    # =====================================================
     #
-    # El repositorio vuelve a consultar la información
-    # después de bloquear el vehículo.
+    # El repositorio bloquea el vehículo y la celda.
+    #
+    # Comprueba nuevamente la vigencia, la existencia
+    # de una estancia activa y la disponibilidad de
+    # la celda antes de persistir la entrada.
 
     resultado = registrar_entrada(
         id_vehiculo=vehiculo["id_vehiculo"],
@@ -78,15 +163,12 @@ def crear_entrada(
         tipo_vehiculo=vehiculo["tipo_vehiculo"]
     )
 
-    # =============================================
-    # 4. CONSTRUIR RESPUESTA
-    # =============================================
+    # =====================================================
+    # 5. CONSTRUIR RESPUESTA
+    # =====================================================
     #
-    # Se devuelve la información del vehículo obtenida
-    # dentro de la transacción, en lugar de reutilizar
-    # los datos de la consulta previa.
-    #
-    # Se conserva la estructura JSON de EA1 y EA2.
+    # Conserva la estructura JSON utilizada desde EA1.
+    # Los datos proceden de la transacción confirmada.
 
     vehiculo_actualizado = resultado["vehiculo"]
 

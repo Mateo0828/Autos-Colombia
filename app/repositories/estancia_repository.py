@@ -4,6 +4,49 @@ from app.services.mensualidad_service import (
     calcular_estado_mensualidad
 )
 
+class ConflictoEntradaError(Exception):
+    """
+    Conflicto detectado durante la revalidacion
+    transaccional de una entrada.
+    """
+
+    pass
+
+
+def consultar_celda_para_entrada(codigo_celda):
+    """
+    Consulta el estado inicial de la celda.
+
+    No sustituye la revalidacion transaccional
+    realizada mediante SELECT FOR UPDATE.
+    """
+
+    with get_connection() as conexion:
+
+        with conexion.cursor() as cursor:
+
+            cursor.execute(
+                """
+                SELECT codigo, tipo_celda, estado
+                FROM celda
+                WHERE UPPER(codigo) = UPPER(%s);
+                """,
+                (codigo_celda,)
+            )
+
+            fila = cursor.fetchone()
+
+    if fila is None:
+
+        return None
+
+    return {
+        "codigo": fila[0],
+        "tipo_celda": fila[1],
+        "estado": fila[2]
+    }
+
+
 def existe_estancia_activa(id_vehiculo):
     consulta = """
         SELECT EXISTS (
@@ -159,7 +202,7 @@ def registrar_entrada(
 
             if tiene_estancia_activa:
 
-                raise ValueError(
+                raise ConflictoEntradaError(
                     "El vehículo ya tiene una estancia activa."
                 )
 
@@ -226,13 +269,13 @@ def registrar_entrada(
 
             if estado_celda == "OCUPADA":
 
-                raise ValueError(
+                raise ConflictoEntradaError(
                     "La celda seleccionada se encuentra ocupada."
                 )
 
             if estado_celda == "FUERA_DE_SERVICIO":
 
-                raise ValueError(
+                raise ConflictoEntradaError(
                     "La celda seleccionada se encuentra "
                     "fuera de servicio."
                 )
