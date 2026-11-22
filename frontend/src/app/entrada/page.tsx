@@ -2,17 +2,20 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Info, Search, UserPlus, X } from "lucide-react";
+import { ArrowRight, Check, Info, Search, UserPlus, Wallet, X } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import {
   PLATE_ERROR,
   formatDateTime,
   formatDocument,
   isValidPlate,
+  monthlyValid,
   normalizePlate,
   vehicleTypeLabel,
 } from "@/lib/format";
-import type { Cell, EntryValidation } from "@/types/api";
+import type { Cell, EntryValidation, MonthlyInfo } from "@/types/api";
+import MonthlyFields from "@/components/MonthlyFields";
+import { SecondaryButton } from "@/components/Fields";
 import { useSummary } from "@/components/SummaryContext";
 import PageHeader from "@/components/PageHeader";
 import StepCard from "@/components/StepCard";
@@ -21,6 +24,7 @@ import CellChip from "@/components/CellChip";
 import { useAuth } from "@/components/AuthContext";
 import PrimaryButton from "@/components/PrimaryButton";
 import Alert from "@/components/Alert";
+import MonthlyBadge from "@/components/MonthlyBadge";
 
 export default function EntryPage() {
   const { refresh } = useSummary();
@@ -29,6 +33,8 @@ export default function EntryPage() {
   const [plate, setPlate] = useState("");
   const [checking, setChecking] = useState(false);
   const [validation, setValidation] = useState<EntryValidation | null>(null);
+  // Monthly data, fetched only when the entry is blocked by the monthly fee (mockup m12).
+  const [monthly, setMonthly] = useState<MonthlyInfo | null>(null);
   const [cells, setCells] = useState<Cell[]>([]);
   const [cell, setCell] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -37,6 +43,9 @@ export default function EntryPage() {
 
   const vehicle = validation?.vehiculo ?? null;
   const canEnter = validation?.puede_ingresar === true && vehicle !== null;
+  // F-06: decided by `codigo_motivo`; the `motivo` text is only displayed, never interpreted.
+  const code = validation?.codigo_motivo;
+  const blockedByMonthly = code === "SIN_PRIMER_PAGO" || code === "MENSUALIDAD_VENCIDA";
 
   async function loadCells(type: NonNullable<typeof vehicle>["tipo_vehiculo"]) {
     const r = await api.availableCells(type);
@@ -51,6 +60,7 @@ export default function EntryPage() {
     setError(null);
     setSuccess(null);
     setValidation(null);
+    setMonthly(null);
     setCells([]);
     setCell(null);
     if (!isValidPlate(value)) {
@@ -62,6 +72,13 @@ export default function EntryPage() {
       const v = await api.validateEntry(value);
       setValidation(v);
       if (v.puede_ingresar && v.vehiculo) await loadCells(v.vehiculo.tipo_vehiculo);
+      else if (v.vehiculo && (v.codigo_motivo === "SIN_PRIMER_PAGO" || v.codigo_motivo === "MENSUALIDAD_VENCIDA")) {
+        try {
+          setMonthly(await api.monthly(v.vehiculo.placa));
+        } catch {
+          // The motivo and the payment link are enough if this extra query fails.
+        }
+      }
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -105,7 +122,7 @@ export default function EntryPage() {
   const checks = validation
     ? [
         ["Vehículo registrado", validation.validaciones.vehiculo_registrado],
-        ["Mensualidad activa", validation.validaciones.mensualidad_activa],
+        ["Mensualidad vigente", monthlyValid(validation.validaciones)],
         ["Sin estancia activa", validation.validaciones.sin_estancia_activa],
       ]
     : [];
@@ -143,22 +160,45 @@ export default function EntryPage() {
         </form>
       </StepCard>
 
-      {vehicle ? (
+      {vehicle && validation && blockedByMonthly ? (
+        // Blocked by the monthly fee: banner with the server's motivo, monthly data, way to pay (m12).
+        <>
+          <Alert kind="warning" title={validation.motivo} urgent />
+          <StepCard
+            step={2}
+            kicker="Verificación"
+            title={`Vehículo ${vehicle.placa}`}
+            aside={<MonthlyBadge state={monthly?.estado_mensualidad ?? vehicle.estado_mensualidad} />}
+          >
+            {monthly ? (
+              <MonthlyFields info={monthly} />
+            ) : (
+              <InfoGrid
+                items={[
+                  { label: "Cliente", value: vehicle.cliente.nombre },
+                  { label: "Tipo de vehículo", value: vehicleTypeLabel(vehicle.tipo_vehiculo) },
+                  { label: "Documento", value: formatDocument(vehicle.cliente.documento) },
+                ]}
+              />
+            )}
+            <div className="mt-6 flex justify-end gap-3">
+              <SecondaryButton onClick={() => setValidation(null)}>Cancelar</SecondaryButton>
+              <Link
+                href={`/pagos?placa=${encodeURIComponent(vehicle.placa)}`}
+                className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent px-5 text-sm font-bold text-[#0a1b3d] hover:brightness-110"
+              >
+                <Wallet size={16} />
+                {code === "SIN_PRIMER_PAGO" ? "Registrar primer pago" : "Registrar pago de renovación"}
+              </Link>
+            </div>
+          </StepCard>
+        </>
+      ) : vehicle ? (
         <StepCard
           step={2}
           kicker="Verificación"
           title="Datos del vehículo"
-          aside={
-            <span
-              className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${
-                vehicle.estado_mensualidad === "ACTIVA"
-                  ? "border-success/50 bg-success/10 text-success"
-                  : "border-danger/50 bg-danger/10 text-danger"
-              }`}
-            >
-              {vehicle.estado_mensualidad}
-            </span>
-          }
+          aside={<MonthlyBadge state={vehicle.estado_mensualidad} />}
         >
           <InfoGrid
             items={[
@@ -193,7 +233,7 @@ export default function EntryPage() {
           <p role="alert" className="text-sm font-bold text-danger">
             {validation.motivo}
           </p>
-          {!validation.validaciones.vehiculo_registrado && (
+          {code === "VEHICULO_NO_REGISTRADO" && (
             <Link
               href={`/registro?placa=${encodeURIComponent(normalizePlate(plate))}`}
               className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl border border-accent/40 bg-[#0a1b3d]/60 px-5 text-sm font-bold text-accent hover:bg-accent/10"

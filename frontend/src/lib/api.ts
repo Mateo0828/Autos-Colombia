@@ -13,7 +13,11 @@ import type {
   LoginResult,
   MeResult,
   MessageResult,
+  MonthlyInfo,
   ParkingStatus,
+  PaymentBody,
+  PaymentHistory,
+  PaymentResult,
   RegistrationResult,
   Role,
   UserList,
@@ -166,17 +170,24 @@ export const api = {
     request<ClientUpdateResult>(`/api/clientes/${id}`, json("PUT", body)),
   updateVehicle: (
     plate: string,
-    body: {
-      marca: string;
-      color: string;
-      tipo_vehiculo: VehicleType;
-      estado_mensualidad: "ACTIVA" | "INACTIVA";
-    },
+    // D-31: estado_mensualidad is derived by the server and never sent.
+    body: { marca: string; color: string; tipo_vehiculo: VehicleType },
   ) =>
     request<VehicleResult>(
       `/api/vehiculos/${encodeURIComponent(plate)}`,
       json("PUT", body),
     ),
+
+  // Payments (real backend I3). The body is exactly {placa, fecha_pago, corte_esperado}.
+  /** `fechaPago` (AAAA-MM-DD) is optional: without it the server projects for today in Colombia. */
+  monthly: (plate: string, fechaPago?: string) =>
+    request<MonthlyInfo>(
+      `/api/mensualidades/${encodeURIComponent(plate)}${fechaPago ? `?fecha_pago=${encodeURIComponent(fechaPago)}` : ""}`,
+    ),
+  registerPayment: (body: PaymentBody) =>
+    request<PaymentResult>("/api/pagos", json("POST", body)),
+  payments: (plate: string) =>
+    request<PaymentHistory>(`/api/vehiculos/${encodeURIComponent(plate)}/pagos`),
 
   // Cells
   cells: (f: CellFilters = {}) => {

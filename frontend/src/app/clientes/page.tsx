@@ -12,6 +12,7 @@ import StepCard from "@/components/StepCard";
 import { SelectField, TextField } from "@/components/Fields";
 import PrimaryButton from "@/components/PrimaryButton";
 import Alert from "@/components/Alert";
+import MonthlyBadge from "@/components/MonthlyBadge";
 
 type VehicleRow = ClientDetail["vehiculos"][number];
 
@@ -27,9 +28,6 @@ function VehicleEditor({
   const [marca, setMarca] = useState(vehicle.marca);
   const [color, setColor] = useState(vehicle.color);
   const [tipo, setTipo] = useState<VehicleType | "">(vehicle.tipo_vehiculo);
-  const [estadoMens, setEstadoMens] = useState<"ACTIVA" | "INACTIVA">(
-    vehicle.estado_mensualidad === "INACTIVA" ? "INACTIVA" : "ACTIVA",
-  );
   // D-26: the plate is immutable; it is shown but never sent.
   const placa = vehicle.placa;
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -48,7 +46,6 @@ function VehicleEditor({
         marca: marca.trim(),
         color: color.trim(),
         tipo_vehiculo: tipo,
-        estado_mensualidad: estadoMens,
       });
       onSaved(r.mensaje ?? `Vehículo ${placa} actualizado correctamente.`);
     } catch (err) {
@@ -75,17 +72,6 @@ function VehicleEditor({
           autoComplete="off"
           error={errors.placa}
         />
-        <SelectField
-          label="Tipo de vehículo"
-          value={tipo}
-          onChange={(e) => setTipo(e.target.value as VehicleType | "")}
-          error={errors.tipo}
-        >
-          <option value="">Seleccione un tipo</option>
-          <option value="MOTO">Moto</option>
-          <option value="AUTOMOVIL">Automóvil</option>
-          <option value="CAMIONETA">Camioneta</option>
-        </SelectField>
         <TextField
           label="Marca"
           value={marca}
@@ -102,19 +88,27 @@ function VehicleEditor({
           autoComplete="off"
           error={errors.color}
         />
+        <SelectField
+          label="Tipo de vehículo"
+          value={tipo}
+          onChange={(e) => setTipo(e.target.value as VehicleType | "")}
+          error={errors.tipo}
+        >
+          <option value="">Seleccione un tipo</option>
+          <option value="MOTO">Moto</option>
+          <option value="AUTOMOVIL">Automóvil</option>
+          <option value="CAMIONETA">Camioneta</option>
+        </SelectField>
       </div>
+      <p className="mt-4 text-xs text-muted">
+        El tipo de vehículo no puede cambiarse mientras el vehículo tenga una estancia activa.
+      </p>
       <div className="mt-5 flex items-center justify-between">
-        <label className="flex items-center gap-2 text-xs text-muted">
+        {/* D-31: derived by the server from the payments; read-only, never sent. */}
+        <div className="flex items-center gap-2 text-xs text-muted">
           Mensualidad
-          <select
-            value={estadoMens}
-            onChange={(e) => setEstadoMens(e.target.value as "ACTIVA" | "INACTIVA")}
-            className="rounded-lg border border-line bg-card px-2 py-1 text-sm text-white"
-          >
-            <option value="ACTIVA">ACTIVA</option>
-            <option value="INACTIVA">INACTIVA</option>
-          </select>
-        </label>
+          <MonthlyBadge state={vehicle.estado_mensualidad} suffix=" (calculada)" />
+        </div>
         <PrimaryButton type="submit" disabled={saving}>
           <Save size={16} />
           {saving ? "Guardando…" : "Guardar vehículo"}
@@ -201,8 +195,8 @@ function ClientsScreen() {
     <>
       <PageHeader
         kicker="Administración"
-        title="Clientes y vehículos"
-        subtitle="Busca un vehículo por su placa para modificar los datos del cliente y de sus vehículos."
+        title="Modificar cliente y vehículo"
+        subtitle="Solo el administrador puede modificar los registros ya almacenados."
       />
       {success && <Alert kind="success" title={success} />}
       {error && <Alert kind="error" title={error} />}
@@ -211,7 +205,7 @@ function ClientsScreen() {
         <form onSubmit={onSearch} className="flex gap-3">
           <div className="min-w-0 flex-1">
             <TextField
-              label="Placa"
+              label="Placa del vehículo"
               value={plate}
               onChange={(e) => setPlate(e.target.value.toUpperCase())}
               placeholder="Ej. ABC123"
@@ -221,7 +215,7 @@ function ClientsScreen() {
           <div className="flex items-end">
             <PrimaryButton type="submit" disabled={!plate.trim() || searching}>
               <Search size={16} />
-              {searching ? "Buscando…" : "Buscar"}
+              {searching ? "Consultando…" : "Consultar"}
             </PrimaryButton>
           </div>
         </form>

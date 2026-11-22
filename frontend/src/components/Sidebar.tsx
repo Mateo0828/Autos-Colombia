@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Car,
   Contact,
+  CreditCard,
   LayoutGrid,
   LogIn,
   LogOut,
@@ -27,6 +28,7 @@ const ITEMS: {
   { href: "/vehiculos-dentro", label: "Vehículos dentro", icon: Car },
   { href: "/estado", label: "Estado del parqueadero", icon: LayoutGrid },
   { href: "/registro", label: "Registrar cliente y vehículo", icon: UserPlus },
+  { href: "/pagos", label: "Pagos", icon: CreditCard },
   { href: "/clientes", label: "Clientes y vehículos", icon: Contact, role: "ADMINISTRADOR" },
   { href: "/celdas", label: "Celdas", icon: ParkingSquare, role: "ADMINISTRADOR" },
   { href: "/usuarios", label: "Usuarios", icon: Users, role: "ADMINISTRADOR" },

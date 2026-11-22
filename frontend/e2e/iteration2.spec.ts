@@ -145,17 +145,19 @@ test("T-07 registro de cliente y vehículo desde Entrada (no registrado)", async
   await page.getByRole("button", { name: "Registrar cliente y vehículo" }).click();
   await expect(page.getByRole("alert").filter({ hasText: /registrad/i })).toBeVisible();
 
-  // Now the vehicle can be consulted for entry.
+  // Now the vehicle is registered: Entrada finds it. In I3 (D-31) it is INACTIVA until its
+  // first payment, so entry is blocked by the monthly fee and offers the payment.
   await checkPlate(page, "ZZZ999");
-  await expect(page.getByText("Kia")).toBeVisible();
+  await expect(page.getByText("no tiene un primer pago")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Registrar primer pago" })).toBeVisible();
 });
 
 test("T-08 administrador modifica cliente y vehículo", async ({ page }) => {
   await login(page, ADMIN);
   await page.getByRole("link", { name: "Clientes y vehículos" }).click();
-  await expect(page.getByRole("heading", { name: "Clientes y vehículos" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Modificar cliente y vehículo" })).toBeVisible();
   await page.getByLabel("Placa").fill("ABC123");
-  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByRole("button", { name: "Consultar" }).click();
   const clientForm = page.getByRole("form", { name: "Datos del cliente" });
   await clientForm.getByLabel("Nombre completo").fill("Carlos Rodriguez Editado");
   await clientForm.getByRole("button", { name: "Guardar cliente" }).click();
@@ -342,7 +344,7 @@ test.describe("[real] casos de servidor", () => {
     await login(page, ADMIN);
     await page.goto("/clientes");
     await page.getByLabel("Placa").fill("DEF456");
-    await page.getByRole("button", { name: "Buscar" }).click();
+    await page.getByRole("button", { name: "Consultar" }).click();
     const vehicleForm = page.getByRole("form", { name: "Vehículo DEF456" });
     await expect(vehicleForm.getByLabel("Placa")).toHaveAttribute("readonly", "");
     await shot(page, "16_clientes_placa_inmutable");
