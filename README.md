@@ -6,9 +6,11 @@ El proyecto se construye por iteraciones sobre una misma base técnica y funcion
 
 - **Iteración 1 (EA1):** gestión de entrada y salida de vehículos.
 - **Iteración 2 (EA2):** autenticación, perfiles, gestión de usuarios, registro y modificación de clientes/vehículos y gestión operativa de celdas.
-- **Iteraciones posteriores:** funcionalidades fuera del alcance actual, como pagos y administración de mensualidades.
+- **Iteración 3 (EA3):** gestión de pagos y mensualidades: tarifas, fechas de corte, vigencia, historial de pagos y validación del ingreso según la mensualidad.
 
-La Iteración 2 **no reemplaza** la Iteración 1. La amplía, conserva su arquitectura y sus reglas de integridad, y protege las operaciones existentes mediante autenticación y control de roles.
+Cada iteración **amplía** a la anterior sin reemplazarla: la Iteración 2 protege las operaciones de la Iteración 1 con autenticación y roles, y la Iteración 3 agrega los pagos y calcula la vigencia de la mensualidad que la Iteración 1 solo consultaba.
+
+Guía rápida para quien revisa el proyecto: instalar según §7 y §8, arrancar según §9, iniciar sesión con `admin` u `operador1`, y probar los pagos con las placas de la semilla (§14). Las funciones de pagos están descritas en §3A.
 
 ---
 
@@ -363,6 +365,53 @@ El operador de salida puede ser diferente del operador de entrada; ambos quedan 
 
 ---
 
+# 3A. Iteración 3 — Gestión de pagos y mensualidades
+
+La tercera iteración agrega el registro de pagos de mensualidad y calcula, a partir de ellos, la vigencia de cada vehículo. Conserva la autenticación, los roles y las operaciones de las iteraciones anteriores.
+
+## 3A.1 Reglas de negocio
+
+- **Tarifas fijas** por mes: automóvil y camioneta `$250.000`; moto `$100.000`. El valor lo calcula siempre el servidor; el cliente no lo envía.
+- **Un pago cubre un mes.** El primer pago define la fecha de inicio y el día de corte; las renovaciones empiezan en la fecha de corte anterior.
+- **Día de corte.** El corte de cada período se calcula desde el primer pago y conserva el día original; en meses cortos se ajusta al último día del mes (por ejemplo, el día 31 cae el 30 de noviembre y vuelve al 31 de diciembre).
+- **Vigencia.** La mensualidad está `ACTIVA` si la fecha de hoy es anterior a la fecha de corte; el mismo día del corte ya es `INACTIVA`. El estado se deriva de los pagos y no se edita a mano (modificar un vehículo no permite cambiarlo).
+- **Vehículos nuevos** quedan `INACTIVA` hasta registrar su primer pago.
+- **Renovación tardía o anticipada.** Se permiten pagos antes o después del corte; si tras el pago la mensualidad sigue vencida, la respuesta trae una `advertencia`.
+- **Pagos inmutables:** no se editan ni se eliminan.
+- **Ingreso.** Solo entra un vehículo con mensualidad `ACTIVA`; la salida nunca se bloquea por la mensualidad.
+- **Concurrencia.** El pago incluye `corte_esperado`; si otra persona ya pagó, el servidor responde `409` y no duplica el período (bloqueo de fila y restricción única por vehículo y período).
+- **Zona horaria de negocio:** America/Bogota.
+
+## 3A.2 Endpoints nuevos y modificados
+
+Todos requieren `Authorization: Bearer <token>` y rol `ADMINISTRADOR` u `OPERADOR`.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/mensualidades/{placa}` | Estado de la mensualidad y `proximo_pago` (tipo, valor, período, corte esperado, estado resultante, advertencia). Parámetro opcional `?fecha_pago=AAAA-MM-DD` (no puede ser futura). |
+| POST | `/api/pagos` | Registra un pago. Cuerpo exacto: `{placa, fecha_pago, corte_esperado}` (`corte_esperado` es `null` en el primer pago). Campos adicionales (por ejemplo `valor`) devuelven `422`. |
+| GET | `/api/vehiculos/{placa}/pagos` | Historial de pagos, del más reciente al más antiguo, con `registrado_por` (`id_operador`, `usuario`, `nombre`). |
+| GET | `/api/vehiculos/{placa}/validar-ingreso` | Se amplía con `codigo_motivo`: `VEHICULO_NO_REGISTRADO`, `SIN_PRIMER_PAGO`, `MENSUALIDAD_VENCIDA`, `ESTANCIA_ACTIVA` o `INGRESO_PERMITIDO`. |
+| POST | `/api/entradas` | Ahora rechaza con `400` el ingreso de un vehículo con mensualidad vencida o sin primer pago. |
+
+Códigos HTTP de la Iteración 3: `200`, `201` (pago creado), `400` (ingreso rechazado), `401`, `403`, `404` (placa inexistente), `409` (el corte cambió: consultar de nuevo) y `422` (datos inválidos o campos no autorizados).
+
+## 3A.3 Frontend de la Iteración 3
+
+- Pantalla `/pagos`: consulta de placa, tarjeta de mensualidad (estado, inicio, día de corte, fecha de corte y número de pagos), ventana de confirmación con valor, nueva fecha de corte, estado resultante y advertencia, resultado del pago e historial.
+- Pagos anticipados, renovación tardía, conflicto `409` y fecha futura (`422`) se informan en pantalla.
+- `/entrada` decide según `codigo_motivo` y ofrece «Registrar primer pago» o «Registrar pago de renovación».
+- `/registro` y `/clientes` muestran la mensualidad como calculada (sin selector de estado).
+
+## 3A.4 Base de datos de la Iteración 3
+
+- `sql/autos_colombia.sql` (instalación limpia) incluye la tabla `pago`, las columnas `fecha_inicio_mensualidad` y `fecha_corte` de `vehiculo` y los pagos de demostración con fechas relativas a hoy.
+- `sql/semillas_calendario_ea3.sql` agrega los vehículos `CAL030`, `CAL031` y `CAL029` (día de corte 30, 31 y 29 de febrero).
+- `sql/migracion_iteracion3.sql` migra una base de la Iteración 2 conservando sus datos (no inventa pagos históricos).
+- `sql/pruebas_integridad_pago.sql` verifica las restricciones de la tabla de pagos.
+
+---
+
 # 4. Alcance actual y funcionalidades fuera de alcance
 
 ## Incluido en Iteración 2
@@ -380,13 +429,24 @@ El operador de salida puede ser diferente del operador de entrada; ambos quedan 
 - control de permisos;
 - integridad y concurrencia.
 
+## Incluido en Iteración 3
+
+- consulta de mensualidad con proyección del próximo pago;
+- registro de pagos (primer pago, renovación anticipada y renovación tardía);
+- cálculo de fechas de corte con conservación del día original;
+- vigencia de la mensualidad derivada de los pagos;
+- historial de pagos por vehículo;
+- validación del ingreso según la mensualidad (con `codigo_motivo`);
+- control de concurrencia con `corte_esperado`;
+- pruebas automatizadas del backend y pruebas de navegador del frontend.
+
 ## Fuera de alcance
 
 No forman parte de la entrega actual:
 
-- pagos;
 - facturación;
-- CRUD de mensualidades;
+- cartera, recargos y anulación o edición de pagos;
+- reportes de ingresos;
 - novedades;
 - reasignación de celdas como funcionalidad de entrega.
 
@@ -396,7 +456,7 @@ Existe código heredado para reasignación de celda:
 PUT /api/estancias/{placa}/reasignar-celda
 ```
 
-pero **no forma parte del alcance de EA2 ni debe integrarse al frontend**.
+pero **no forma parte del alcance de EA2 ni de EA3 ni debe integrarse al frontend**.
 
 ---
 
@@ -425,6 +485,8 @@ pero **no forma parte del alcance de EA2 ni debe integrarse al frontend**.
 - lucide-react.
 - Playwright (pruebas de navegador, opcional).
 
+Pruebas del backend: `unittest` de la biblioteca estándar de Python (sin dependencias adicionales).
+
 ## Control de versiones
 
 - Git.
@@ -436,7 +498,7 @@ Repositorio:
 https://github.com/Mateo0828/Autos-Colombia
 ```
 
-El backend y el frontend de EA2 ya están fusionados en la rama `main`. Para ejecutar el sistema solo se necesita `main`.
+`main` contiene el sistema completo de las tres iteraciones (backend y frontend). Para ejecutarlo solo se necesita `main`.
 
 ---
 
@@ -451,6 +513,7 @@ Autos Colombia/
 │   │   ├── cliente_repository.py
 │   │   ├── estancia_repository.py
 │   │   ├── operador_repository.py
+│   │   ├── pago_repository.py
 │   │   ├── registro_repository.py
 │   │   ├── sesion_repository.py
 │   │   └── vehiculo_repository.py
@@ -462,30 +525,36 @@ Autos Colombia/
 │   │   ├── consulta_routes.py
 │   │   ├── entrada_routes.py
 │   │   ├── operador_routes.py
+│   │   ├── pago_routes.py
 │   │   ├── reasignacion_routes.py
 │   │   ├── registro_routes.py
 │   │   ├── salida_routes.py
 │   │   ├── usuario_routes.py
 │   │   └── vehiculo_routes.py
 │   │
-│   ├── services/
+│   ├── services/              (incluye mensualidad_service, pago_service y validacion_service)
 │   ├── auth_middleware.py
 │   ├── database.py
 │   └── __init__.py
 │
-├── frontend/                  (Next.js: pantallas de EA1 y EA2)
+├── frontend/                  (Next.js: pantallas de EA1, EA2 y EA3)
 │   ├── src/app/               (rutas: login, entrada, salida, vehiculos-dentro,
-│   │                           estado, usuarios, registro, clientes, celdas)
+│   │                           estado, usuarios, registro, clientes, celdas, pagos)
 │   ├── src/components/
 │   ├── src/lib/api.ts         (cliente de la API)
 │   ├── src/types/
 │   ├── e2e/                   (pruebas Playwright)
 │   └── package.json
 │
+├── docs/
+│   └── RESULTADOS_PRUEBAS_EA3.md
+│
 ├── informes/
 │   ├── 2026-11-11_backend_B08.md
 │   └── capturas/
 │       └── pruebas_i2_backend.txt
+│
+├── tests/                     (pruebas automatizadas de la Iteración 3)
 │
 ├── scripts/
 │   ├── seed_usuarios.py
@@ -494,7 +563,10 @@ Autos Colombia/
 ├── sql/
 │   ├── autos_colombia.sql
 │   ├── migracion_iteracion2.sql
-│   └── pruebas_integridad_estancia.sql
+│   ├── migracion_iteracion3.sql
+│   ├── semillas_calendario_ea3.sql
+│   ├── pruebas_integridad_estancia.sql
+│   └── pruebas_integridad_pago.sql
 │
 ├── .env.example
 ├── README.md
@@ -640,7 +712,14 @@ El script:
 - conserva las restricciones de EA1;
 - incorpora usuarios y sesiones de EA2;
 - incorpora `FUERA_DE_SERVICIO`;
-- carga los datos semilla.
+- incorpora la tabla de pagos y las columnas de mensualidad de la Iteración 3;
+- carga los datos semilla, incluidos pagos de demostración con fechas relativas a hoy.
+
+Luego, para cargar los vehículos de calendario (`CAL030`, `CAL031`, `CAL029`) usados en las pruebas de fechas especiales:
+
+```bash
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f sql/semillas_calendario_ea3.sql
+```
 
 Después, con el entorno virtual activo (§7.3), ejecutar:
 
@@ -648,19 +727,25 @@ Después, con el entorno virtual activo (§7.3), ejecutar:
 python scripts/seed_usuarios.py
 ```
 
-para generar los hashes de contraseña a partir de las variables `E2E_*_PASSWORD` del `.env`. Este mismo par de pasos (SQL + seed) deja la base limpia de nuevo cuando se necesite.
+para generar los hashes de contraseña a partir de las variables `E2E_*_PASSWORD` del `.env`. Este mismo conjunto de pasos (SQL, semillas de calendario y seed) deja la base limpia de nuevo cuando se necesite.
 
 > `autos_colombia.sql` elimina y recrea las tablas. No debe ejecutarse sobre una base con información que se quiera conservar.
 
 ---
 
-## 8.2 Migración desde una base de Iteración 1
+## 8.2 Migración desde una base de Iteración 1 o 2
 
 Para conservar una base existente:
 
 ```bash
 set -a; source .env; set +a
 PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f sql/migracion_iteracion2.sql
+```
+
+Si la base es de la Iteración 2, aplique en su lugar (o después) `sql/migracion_iteracion3.sql`, que agrega pagos y mensualidades sin borrar datos:
+
+```bash
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f sql/migracion_iteracion3.sql
 ```
 
 Después:
@@ -957,7 +1042,7 @@ En EA2:
 
 # 13. Códigos HTTP
 
-## Iteración 2
+## Iteración 2 y 3
 
 ```text
 200 → operación exitosa
@@ -970,7 +1055,7 @@ En EA2:
 500 → error interno
 ```
 
-Los endpoints heredados de EA1 conservan sus validaciones históricas con `400` cuando corresponde.
+Los endpoints heredados de EA1 conservan sus validaciones históricas con `400` cuando corresponde. En la Iteración 3, un ingreso con mensualidad vencida también responde `400`, y un pago con `corte_esperado` desactualizado responde `409`.
 
 Todas las respuestas utilizan JSON con:
 
@@ -1008,15 +1093,17 @@ Las contraseñas no se almacenan en texto plano en SQL.
 
 ## Vehículos
 
-```text
-ABC123
-DEF456
-GHI789
-MOT01A
-JKL321
-```
+Los pagos y las fechas de corte de la semilla se calculan con relación a la fecha de hoy (America/Bogota), por lo que el estado de cada placa depende del día en que se cargue la base.
 
-`JKL321` tiene mensualidad `INACTIVA` para probar el rechazo de ingreso.
+| Placa | Situación al cargar la base |
+|---|---|
+| `ABC123`, `DEF456`, `GHI789`, `MOT01A` | Mensualidad vigente, con 1 pago (iniciado hace 10, 25, 15 y 12 días) |
+| `JKL321` | Mensualidad vencida (corte hace unos días): rechazo de ingreso y renovación tardía |
+| `XYZ987`, `MOT02A` | Sin primer pago: permiten probar el primer pago de automóvil y de moto |
+| `COR001` | Fecha de corte igual a hoy: `INACTIVA` por la regla del día de corte |
+| `CAL030`, `CAL031`, `CAL029` | Día original de corte 30, 31 y 29 de febrero, con 22, 22 y 33 pagos: prueban el ajuste de meses cortos y años bisiestos |
+
+Para probar la `advertencia` de renovación tardía, registre una placa nueva con un primer pago de hace más de un mes: tras el pago la mensualidad sigue `INACTIVA`.
 
 ## Celdas
 
@@ -1128,6 +1215,43 @@ Al terminar, la base queda recreada y sembrada con las contraseñas del `.env`.
 
 ---
 
+## 15.3 Iteración 3 — suite automatizada
+
+Directorio:
+
+```text
+tests/
+```
+
+Resultado validado (rama `feature/i3-backend`, commit `f4e988e`): **67 pruebas aprobadas** (28 unitarias y 39 de integración) y **22 de 22 casos** del plan de pruebas PP-03. El detalle y la correspondencia con los casos PG-01 a PG-22 están en:
+
+```text
+docs/RESULTADOS_PRUEBAS_EA3.md
+```
+
+Archivos principales: `test_mensualidad_service.py` y `test_proyeccion_pago.py` (reglas, sin base de datos); `test_integracion_pagos.py`, `test_integracion_operaciones.py`, `test_concurrencia_entradas.py`, `test_integridad_transaccional.py` y `test_regresion_iteraciones.py` (con base de datos).
+
+Pruebas unitarias (no necesitan base de datos), con el entorno virtual activo:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Suite completa (usa una **base aislada**, nunca la principal):
+
+```bash
+export RUN_E2E=1
+export DB_NAME=autos_colombia_ea3_pruebas
+python -m unittest discover -s tests -v
+unset RUN_E2E
+```
+
+En Windows PowerShell: `$env:RUN_E2E = "1"` y `$env:DB_NAME = "autos_colombia_ea3_pruebas"`.
+
+Frontend: las pruebas de navegador de la Iteración 3 están en `frontend/e2e/` (`iteration3.spec.ts` en modo mock e `iteration3.real.spec.ts` contra el backend real); resultado: 12 de 12 aprobadas contra el backend real y 26 de 26 en modo mock. Ejecución: `cd frontend && npx playwright test` (ver `frontend/README.md`).
+
+---
+
 # 16. Concurrencia
 
 La gestión de celdas utiliza bloqueo de fila con:
@@ -1137,6 +1261,8 @@ SELECT ... FOR UPDATE
 ```
 
 Se comprobó que dos operaciones concurrentes sobre la misma celda no dejan un estado inconsistente.
+
+Los pagos usan el mismo principio: el servidor bloquea la fila del vehículo y compara `corte_esperado`; si dos personas pagan a la vez, solo una prospera y la otra recibe `409` sin duplicar el período (además existe la restricción única `UNIQUE(id_vehiculo, periodo_inicio)`).
 
 En la prueba automatizada:
 
@@ -1181,6 +1307,10 @@ Implementado en `frontend/` y fusionado en `main`. Incorpora:
 - ante un `401`, limpieza de sesión y regreso al login.
 
 Verificación: 17 pruebas Playwright en modo real contra el backend, sobre `main` en el commit `74c738a` [real]. Cómo ejecutar el frontend: §9.2.
+
+## Frontend de Iteración 3
+
+Agrega `/pagos` y adapta `/entrada`, `/registro` y `/clientes` a la mensualidad calculada (§3A.3). Verificación: 12 de 12 pruebas Playwright contra el backend real de la Iteración 3 y 26 de 26 en modo mock.
 
 ---
 
@@ -1245,8 +1375,15 @@ sql/autos_colombia.sql
 sql/migracion_iteracion2.sql
 sql/pruebas_integridad_estancia.sql
 
+sql/migracion_iteracion3.sql
+sql/semillas_calendario_ea3.sql
+sql/pruebas_integridad_pago.sql
+
 scripts/seed_usuarios.py
 scripts/pruebas_i2.sh
+
+tests/
+docs/RESULTADOS_PRUEBAS_EA3.md
 
 informes/2026-11-11_backend_B08.md
 informes/capturas/pruebas_i2_backend.txt
@@ -1302,6 +1439,24 @@ Resultado: 17 pruebas Playwright [real] contra el backend, sobre `main` (commit 
 
 Incluye login y sesión, permisos por rol, gestión de usuarios, registro de cliente y vehículo, modificación de clientes, administración de celdas, entrada y salida.
 
+## Backend Iteración 3
+
+```text
+IMPLEMENTADO Y PROBADO
+```
+
+Resultado: 22 de 22 casos del plan PP-03 y 67 pruebas automatizadas aprobadas (`docs/RESULTADOS_PRUEBAS_EA3.md`).
+
+Incluye consulta de mensualidad, registro de pagos, cálculo de fechas de corte, vigencia, historial, validación de ingreso, concurrencia y regresión de las iteraciones anteriores.
+
+## Frontend Iteración 3
+
+```text
+IMPLEMENTADO Y VERIFICADO
+```
+
+Resultado: 12 de 12 pruebas Playwright contra el backend real; 26 de 26 en modo mock.
+
 ---
 
 # 22. Solución de problemas
@@ -1317,4 +1472,6 @@ Incluye login y sesión, permisos por rol, gestión de usuarios, registro de cli
 | `seed_usuarios.py`: «Falta configurar la variable E2E_…» | Agregue las cuatro `E2E_*_PASSWORD` al `.env` (mínimo 8 caracteres). |
 | El frontend muestra datos de ejemplo o no refleja el backend | `NEXT_PUBLIC_USE_MOCK=true` está definida. Quítela de `frontend/.env.local` (y del entorno) y reinicie `npm run dev`. |
 | El frontend muestra «No se pudo conectar con el servidor» o errores de CORS | El backend no está corriendo o `NEXT_PUBLIC_API_URL` es incorrecta. Debe ser `http://127.0.0.1:5000` en `frontend/.env.local`; reinicie `npm run dev` después de cambiarla. |
+| El pago responde `409` («La mensualidad ya fue actualizada») | Otra persona registró un pago antes. Consulte de nuevo la placa y confirme otra vez. |
+| La placa de la semilla ya no aparece vencida o vigente como se describe | Las fechas de la semilla son relativas al día en que se cargó la base. Vuelva a cargar `sql/autos_colombia.sql`, `sql/semillas_calendario_ea3.sql` y `scripts/seed_usuarios.py` (§8.1). |
 | `pruebas_i2.sh` borró mis datos | El script recrea la base. Úselo solo sobre una base de pruebas. |
