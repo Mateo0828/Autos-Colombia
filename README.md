@@ -464,7 +464,7 @@ pero **no forma parte del alcance de EA2 ni de EA3 ni debe integrarse al fronten
 
 ## Backend
 
-- Python 3.12 o superior.
+- Python 3.12 o superior (verificado con 3.13).
 - Flask.
 - Flask-CORS.
 - Werkzeug.
@@ -478,7 +478,7 @@ pero **no forma parte del alcance de EA2 ni de EA3 ni debe integrarse al fronten
 
 ## Frontend
 
-- Node.js 18.18 o superior (probado con 20.14).
+- Node.js 18.18 o superior (probado con 20.11 y 20.14).
 - Next.js 15.5 (App Router), React 19.
 - TypeScript.
 - Tailwind CSS 4.
@@ -585,7 +585,7 @@ git clone https://github.com/Mateo0828/Autos-Colombia.git
 cd Autos-Colombia
 ```
 
-La rama `main` ya contiene la Iteración 2 (backend y frontend). No hace falta cambiar de rama: quien revise el proyecto clona el repositorio y trabaja sobre `main`.
+La rama `main` contiene las tres iteraciones (backend y frontend, hasta la Iteración 3). No hace falta cambiar de rama: quien revise el proyecto clona el repositorio y trabaja sobre `main`.
 
 ---
 
@@ -688,7 +688,7 @@ Linux / WSL / Git Bash:
 
 ```bash
 set -a; source .env; set +a
-PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f sql/autos_colombia.sql
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f sql/autos_colombia.sql
 ```
 
 Windows PowerShell (equivalente; no probado en este entorno):
@@ -696,7 +696,7 @@ Windows PowerShell (equivalente; no probado en este entorno):
 ```powershell
 Get-Content .env | ForEach-Object { if ($_ -match '^\s*([^#=\s]+)\s*=\s*(.*)$') { Set-Item -Path "env:$($Matches[1])" -Value $Matches[2] } }
 $env:PGPASSWORD = $env:DB_PASSWORD
-psql -h $env:DB_HOST -p $env:DB_PORT -U $env:DB_USER -d $env:DB_NAME -f sql/autos_colombia.sql
+psql -h $env:DB_HOST -p $env:DB_PORT -U $env:DB_USER -d $env:DB_NAME -v ON_ERROR_STOP=1 -f sql/autos_colombia.sql
 ```
 
 Si la base no existe (error `database "autos_colombia" does not exist`), créela primero:
@@ -715,11 +715,7 @@ El script:
 - incorpora la tabla de pagos y las columnas de mensualidad de la Iteración 3;
 - carga los datos semilla, incluidos pagos de demostración con fechas relativas a hoy.
 
-Luego, para cargar los vehículos de calendario (`CAL030`, `CAL031`, `CAL029`) usados en las pruebas de fechas especiales:
-
-```bash
-PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f sql/semillas_calendario_ea3.sql
-```
+El script anterior ya incluye los vehículos de calendario (`CAL030`, `CAL031` y `CAL029`). `sql/semillas_calendario_ea3.sql` es idempotente: puede ejecutarse para reponerlos si se borraron, pero no es obligatorio después de `autos_colombia.sql`.
 
 Después, con el entorno virtual activo (§7.3), ejecutar:
 
@@ -727,7 +723,7 @@ Después, con el entorno virtual activo (§7.3), ejecutar:
 python scripts/seed_usuarios.py
 ```
 
-para generar los hashes de contraseña a partir de las variables `E2E_*_PASSWORD` del `.env`. Este mismo conjunto de pasos (SQL, semillas de calendario y seed) deja la base limpia de nuevo cuando se necesite.
+para generar los hashes de contraseña a partir de las variables `E2E_*_PASSWORD` del `.env`. Este mismo par de pasos (SQL y seed) deja la base limpia de nuevo cuando se necesite.
 
 > `autos_colombia.sql` elimina y recrea las tablas. No debe ejecutarse sobre una base con información que se quiera conservar.
 
@@ -1237,7 +1233,19 @@ Pruebas unitarias (no necesitan base de datos), con el entorno virtual activo:
 python -m unittest discover -s tests -v
 ```
 
-Suite completa (usa una **base aislada**, nunca la principal):
+Resultado esperado: «Ran 67 tests … OK (skipped=39)», es decir, 28 aprobadas y 39 omitidas (las de integración).
+
+Suite completa (usa una **base aislada**, nunca la principal). Primero cree y cargue esa base:
+
+```bash
+set -a; source .env; set +a
+export PGPASSWORD="$DB_PASSWORD"
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "CREATE DATABASE autos_colombia_ea3_pruebas;"
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d autos_colombia_ea3_pruebas -v ON_ERROR_STOP=1 -f sql/autos_colombia.sql
+DB_NAME=autos_colombia_ea3_pruebas python scripts/seed_usuarios.py
+```
+
+Después ejecute la suite:
 
 ```bash
 export RUN_E2E=1
@@ -1246,9 +1254,11 @@ python -m unittest discover -s tests -v
 unset RUN_E2E
 ```
 
-En Windows PowerShell: `$env:RUN_E2E = "1"` y `$env:DB_NAME = "autos_colombia_ea3_pruebas"`.
+En Windows PowerShell: `$env:RUN_E2E = "1"` y `$env:DB_NAME = "autos_colombia_ea3_pruebas"`. Resultado esperado con `RUN_E2E=1`: 67 pruebas aprobadas.
 
-Frontend: las pruebas de navegador de la Iteración 3 están en `frontend/e2e/` (`iteration3.spec.ts` en modo mock e `iteration3.real.spec.ts` contra el backend real); resultado: 12 de 12 aprobadas contra el backend real y 26 de 26 en modo mock. Ejecución: `cd frontend && npx playwright test` (ver `frontend/README.md`).
+La suite deja datos de prueba en la base aislada; para repetirla, recárguela antes (`autos_colombia.sql` y el seed con esa `DB_NAME`).
+
+Frontend: las pruebas de navegador de la Iteración 3 están en `frontend/e2e/` (`iteration3.spec.ts` en modo mock e `iteration3.real.spec.ts` contra el backend real); resultado: 12 de 12 aprobadas contra el backend real y 26 de 26 en modo mock. Ejecución del frontend en modo mock: `cd frontend && npx playwright install chromium && npx playwright test`. Para las pruebas contra el backend real, con la API en marcha, defina `E2E_MODE=real`, `NEXT_PUBLIC_API_URL=http://127.0.0.1:5000`, `NEXT_PUBLIC_USE_MOCK=false` y las contraseñas `E2E_*` del `.env`, y ejecute `npx playwright test e2e/iteration3.real.spec.ts`. La regresión de la Iteración 2 en modo real (`e2e/iteration2.spec.ts`) crea usuarios y modifica celdas: úsela solo sobre una base de pruebas y recárguela después.
 
 ---
 
