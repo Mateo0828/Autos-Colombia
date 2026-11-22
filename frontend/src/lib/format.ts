@@ -1,4 +1,4 @@
-import type { VehicleType } from "@/types/api";
+import type { EntryValidation, VehicleType } from "@/types/api";
 
 const TYPE_LABELS: Record<VehicleType, string> = {
   MOTO: "Moto",
@@ -39,6 +39,27 @@ export function normalizePlate(value: string): string {
 // D-13: letters and digits only, 1 to 10 characters.
 export function isValidPlate(plate: string): boolean {
   return /^[A-Z0-9]{1,10}$/.test(plate);
+}
+
+// ---- Payments (I3). Display only: the server computes every date and amount (D-32). ----
+
+/** 250000 -> "$250.000". Accepts the NUMERIC as number or numeric string. */
+export function formatMoney(value: number | string): string {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return String(value);
+  return `${n < 0 ? "-" : ""}$${String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
+}
+
+/** AAAA-MM-DD -> dd/mm/aaaa by splitting the string (no Date, no time zone). */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
+/** Checklist item only: `mensualidad_activa`, derived by the server. Decisions use `codigo_motivo`. */
+export function monthlyValid(v: EntryValidation["validaciones"]): boolean {
+  return v.mensualidad_activa === true;
 }
 
 export function percent(part: number, total: number): number {

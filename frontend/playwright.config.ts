@@ -22,7 +22,8 @@ export default defineConfig({
       ? {
           command: `npx next build && npx next start -p ${port}`,
           url: `http://127.0.0.1:${port}/login`,
-          env: { NEXT_PUBLIC_USE_MOCK: "true" },
+          // Own build directory: never touches `.next`, which belongs to Luis's `npm run dev` (D-35).
+          env: { NEXT_PUBLIC_USE_MOCK: "true", NEXT_DIST_DIR: ".next-test" },
           reuseExistingServer: false,
           timeout: 120_000,
         }

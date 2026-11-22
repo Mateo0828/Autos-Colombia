@@ -72,8 +72,14 @@ export interface Vehicle {
   tipo_vehiculo: VehicleType;
 }
 
+// D-31: derived by the server from the cut-off date; read-only for the UI.
+export type MonthlyState = "ACTIVA" | "INACTIVA";
+
 export interface VehicleWithClient extends Vehicle {
   estado_mensualidad: string;
+  // F-06: names used by the vehicle queries (the payment contract uses `fecha_inicio`).
+  fecha_inicio_mensualidad?: string | null;
+  fecha_corte?: string | null;
   cliente: Client;
 }
 
@@ -109,13 +115,23 @@ export interface ClientUpdateResult {
   cliente: Client;
 }
 
+/** F-06 (D-39): the UI decides by `puede_ingresar` and `codigo_motivo`; `motivo` is only displayed. */
+export type EntryReason =
+  | "VEHICULO_NO_REGISTRADO"
+  | "SIN_PRIMER_PAGO"
+  | "MENSUALIDAD_VENCIDA"
+  | "ESTANCIA_ACTIVA"
+  | "INGRESO_PERMITIDO";
+
 export interface EntryValidation {
   estado: "ok";
   puede_ingresar: boolean;
+  codigo_motivo: EntryReason;
   motivo: string;
   vehiculo: VehicleWithClient | null;
   validaciones: {
     vehiculo_registrado: boolean;
+    // D-36: I2 name kept; in I3 it is derived from the cut-off date.
     mensualidad_activa: boolean;
     sin_estancia_activa: boolean;
   };
@@ -192,6 +208,95 @@ export interface ExitResult {
     celda: Cell;
     operador_salida: Operator;
   };
+}
+
+// ---- Payments (real backend I3, GUIA_INTEGRACION_FRONTEND_EA3, D-39). Dates are AAAA-MM-DD as sent by the server. ----
+
+export type PaymentKind = "PRIMER_PAGO" | "RENOVACION";
+
+/** F-06: `registrado_por` is an object everywhere; the UI shows `nombre`. */
+export interface RegisteredBy {
+  id_operador: number;
+  usuario: string;
+  nombre: string;
+}
+
+/** Server projection of the next payment for a given `fecha_pago` (nothing is computed by the UI). */
+export interface NextPayment {
+  tipo: PaymentKind;
+  /** Date the projection was made for; for the first query it is the server's "today". */
+  fecha_pago: string;
+  valor: number | string;
+  periodo_inicio: string;
+  /** New cut-off date after this payment. */
+  periodo_fin: string;
+  /** Value to send back in POST /api/pagos; `null` only for the first payment. */
+  corte_esperado: string | null;
+  estado_resultante: MonthlyState;
+  advertencia: string | null;
+}
+
+export interface MonthlyInfo {
+  estado: "ok";
+  vehiculo: Vehicle;
+  cliente: Client;
+  tarifa: number;
+  estado_mensualidad: MonthlyState;
+  fecha_inicio: string | null;
+  dia_corte: number | null;
+  fecha_corte: string | null;
+  num_pagos: number;
+  proximo_pago: NextPayment;
+}
+
+export interface PaymentBody {
+  placa: string;
+  fecha_pago: string;
+  corte_esperado: string | null;
+}
+
+export interface PaymentResult {
+  estado: "ok";
+  mensaje: string;
+  pago: {
+    id_pago: number;
+    placa: string;
+    id_cliente: number;
+    tipo: PaymentKind;
+    // NUMERIC: may arrive as number or string; always rendered through formatMoney.
+    valor: number | string;
+    fecha_pago: string;
+    fecha_registro: string;
+    periodo_inicio: string;
+    periodo_fin: string;
+    registrado_por: RegisteredBy;
+  };
+  mensualidad: {
+    estado_mensualidad: MonthlyState;
+    fecha_inicio: string | null;
+    dia_corte: number | null;
+    fecha_corte: string | null;
+    num_pagos: number;
+  };
+  advertencia: string | null;
+}
+
+/** The history does not carry `tipo`. */
+export interface PaymentHistoryItem {
+  id_pago: number;
+  fecha_pago: string;
+  valor: number | string;
+  periodo_inicio: string;
+  periodo_fin: string;
+  registrado_por: RegisteredBy;
+  fecha_registro: string;
+}
+
+export interface PaymentHistory {
+  estado: "ok";
+  placa: string;
+  cantidad: number;
+  pagos: PaymentHistoryItem[];
 }
 
 export interface CellGroup {

@@ -69,31 +69,37 @@ export default function RegistrationForm() {
   return (
     <>
       <PageHeader
-        kicker="Clientes"
+        kicker="Control de acceso"
         title="Registrar cliente y vehículo"
-        subtitle="Registra un cliente y su vehículo en un solo paso. Si el documento ya existe, se reutiliza el cliente."
+        subtitle="Completa los datos para poder continuar con el primer pago de la mensualidad."
       />
+      {!success && initialPlate && isValidPlate(initialPlate) && (
+        <Alert kind="warning" title={`La placa ${initialPlate} no se encuentra registrada.`} />
+      )}
       {success && (
         <Alert
           kind="success"
           title={success.title}
-          detail={`Placa ${success.plate}. La mensualidad inicia como ACTIVA.`}
+          detail={`Placa ${success.plate}. La mensualidad queda INACTIVA hasta registrar el primer pago.`}
         />
       )}
       {success && (
-        <p className="-mt-2 mb-4">
+        <p className="-mt-2 mb-4 flex flex-wrap items-center gap-x-6 gap-y-2">
           <Link
-            href={`/entrada`}
+            href={`/pagos?placa=${encodeURIComponent(success.plate)}`}
             className="inline-flex items-center gap-2 text-sm font-bold text-accent hover:underline"
           >
-            Ir a registrar la entrada <ArrowRight size={14} />
+            Registrar primer pago <ArrowRight size={14} />
+          </Link>
+          <Link href="/entrada" className="text-sm text-muted hover:text-foreground hover:underline">
+            Volver a Entrada
           </Link>
         </p>
       )}
       {error && <Alert kind="error" title={error} />}
 
       <form onSubmit={onSubmit} noValidate>
-        <StepCard step={1} kicker="Titular" title="Datos del cliente">
+        <StepCard step={1} kicker="Primer paso" title="Datos del cliente">
           <div className="grid gap-5 md:grid-cols-2">
             <TextField
               label="Documento"
@@ -113,9 +119,12 @@ export default function RegistrationForm() {
               error={errors.nombre}
             />
           </div>
+          <p className="mt-3 text-xs text-muted">
+            Si el documento ya existe, el vehículo se asocia al cliente registrado.
+          </p>
         </StepCard>
-        <StepCard step={2} kicker="Vehículo" title="Datos del vehículo">
-          <div className="grid gap-5 md:grid-cols-2">
+        <StepCard step={2} kicker="Segundo paso" title="Datos del vehículo">
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
             <TextField
               label="Placa"
               value={placa}
@@ -125,17 +134,6 @@ export default function RegistrationForm() {
               placeholder="Ej. ABC123"
               error={errors.placa}
             />
-            <SelectField
-              label="Tipo de vehículo"
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value as VehicleType | "")}
-              error={errors.tipo}
-            >
-              <option value="">Seleccione un tipo</option>
-              <option value="MOTO">Moto</option>
-              <option value="AUTOMOVIL">Automóvil</option>
-              <option value="CAMIONETA">Camioneta</option>
-            </SelectField>
             <TextField
               label="Marca"
               value={marca}
@@ -152,8 +150,29 @@ export default function RegistrationForm() {
               autoComplete="off"
               error={errors.color}
             />
+            <SelectField
+              label="Tipo de vehículo"
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value as VehicleType | "")}
+              error={errors.tipo}
+            >
+              <option value="">Seleccione un tipo</option>
+              <option value="MOTO">Moto</option>
+              <option value="AUTOMOVIL">Automóvil</option>
+              <option value="CAMIONETA">Camioneta</option>
+            </SelectField>
           </div>
-          <div className="mt-6 flex justify-end">
+          <p className="mt-4 text-xs text-muted">
+            El vehículo queda sin cobertura (INACTIVA) hasta registrar su primer pago. Solo el
+            administrador podrá modificar estos datos después del registro.
+          </p>
+          <div className="mt-6 flex justify-end gap-3">
+            <Link
+              href="/entrada"
+              className="inline-flex h-11 items-center rounded-xl border border-accent/40 bg-[#0a1b3d]/60 px-5 text-sm font-bold text-accent hover:bg-accent/10"
+            >
+              Cancelar
+            </Link>
             <PrimaryButton type="submit" disabled={submitting}>
               <Save size={16} />
               {submitting ? "Registrando…" : "Registrar cliente y vehículo"}
